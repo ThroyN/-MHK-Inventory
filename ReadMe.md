@@ -4,219 +4,110 @@
 
 ---
 
-## Overview
+## What Is This App?
 
-A web-based IT inventory and support ticket management system built with Python and Flask. Designed for real-world IT use at MHK, it centralizes device tracking and support requests across multiple office locations and islands.
+This is an internal tool built for MHK's IT team to keep track of all company devices and manage support requests in one place. Before this, inventory was scattered across spreadsheets and issues were handled through emails — things got lost, devices went unaccounted for, and there was no easy way to see what was going on at a glance.
 
----
-
-## Technologies Used
-
-- **Python 3** — application logic
-- **Flask** — web framework and routing
-- **SQLite** — persistent database (via `data/inventory.db`)
-- **openpyxl** — Excel import/export
-- **HTML / Jinja2** — templating
+This app fixes that. Everything lives in one place, it's easy to use, and nothing gets lost.
 
 ---
 
-## Project Structure
+## How to Run It
 
-```
-app.py                  — Main Flask application (routes, logic, DB helpers)
-templates/              — HTML templates for each page
-data/
-  inventory.db          — SQLite database (all data stored here)
-```
-
----
-
-## How to Run
-
-1. Open Terminal and navigate to the project folder
-2. Run the app:
+Open Terminal, go to the project folder, and run:
 
 ```bash
 python3 app.py
 ```
 
-3. Open your browser to **http://localhost:5001**
+Then open your browser to **http://localhost:5001**
 
 ---
 
 ## Features
 
-### User Sessions
+### Choosing a User
 
-When you open the app you are prompted to select a user before accessing anything. This logs all inventory changes under your name.
-
-- Select an existing user from the list
-- Add a new user by name
-- Delete a user
-- Switch users at any time via the logout button
+When you first open the app, it asks you to pick your name before you do anything. This is so the system knows who made what changes — every edit, addition, or deletion gets tagged with your name. You can add new users or remove old ones from the same screen.
 
 ---
 
 ### Dashboard
 
-The homepage gives a live snapshot of the system:
+The dashboard is the first thing you see after logging in. It gives you a quick overview of everything without having to dig around:
 
-- Total number of active devices
-- Device count grouped by location
-- Total open and in-progress tickets
-- Ticket breakdown by category
-- Five most recently submitted tickets
-- Filter the entire dashboard by island
+- How many devices are currently active
+- Which offices have the most devices
+- How many support tickets are open right now
+- What kinds of issues are being reported most
+- The five most recent tickets so you can see what just came in
+
+You can also filter the whole dashboard by island if you only want to see what's going on in, say, Oahu or the Big Island.
 
 ---
 
-### Inventory Management
+### Inventory
 
-#### Viewing Inventory
+This is the main part of the app — a full record of every device the company owns.
 
-- Searchable table of all devices (search by model, serial number, user, or location)
-- Filter by device type, location, or island
-- Toggle between **Active**, **Archived**, and **All** devices
+#### Finding a device
+You can search by model name, serial number, assigned user, or location. You can also filter down by device type (laptops only, phones only, etc.), by office location, or by island. This makes it easy to pull up exactly what you're looking for even if you have hundreds of devices.
 
-#### Adding a Device
+#### Adding a device
+When you add a new device, you fill in everything about it — the model, serial number, who it's assigned to, what condition it's in, where it's located, and any notes you want to attach. This becomes the permanent record for that device.
 
-Each device record stores:
+#### Editing a device
+You can update any field on a device at any time. Every time you save a change, the app records exactly what was changed — so if someone updates the assigned user from "Dan" to "Tom," that's saved in the history forever.
 
-| Field | Description |
-|---|---|
-| Device Type | Laptop, Desktop, iPhone, etc. |
-| Model | Device model name |
-| Serial Number / Service Tag | Unique identifier |
-| Assigned User | Person the device is assigned to |
-| Password | Device login password |
-| Purchase / Warranty Date | Date of purchase or warranty end |
-| Condition | New, Good, Fair, Poor, or Broken |
-| Location Code | Office location code (e.g. 101, 102) |
-| Island | Hawaii island the device is on |
-| Phone Number | Associated phone number |
-| Notes | Free-text notes |
-
-#### Editing a Device
-
-All fields can be edited. Every edit is logged to the change history with a before/after record of what changed.
-
-#### Deleting a Device
-
-Permanently removes the device. A history entry is saved so the deletion can be undone.
-
-#### Archiving a Device
-
-Marks a device as retired/inactive without deleting it. Archived devices:
-
-- Are hidden from the default inventory view
-- Can be viewed by switching the filter to "Archived"
-- Can be restored to active status at any time
+#### Archiving a device
+When a device is retired or taken out of service, you don't have to delete it. You can archive it instead. Archived devices disappear from the normal inventory view but are still in the system if you ever need to look back at them. You can restore an archived device to active status at any time.
 
 #### Mark as TBD
-
-Used when a device is being reassigned. The original record is archived and a new active copy is created with the Assigned User, Password, and Phone set to **TBD**. Both actions are logged and can be undone together.
+This is useful when a device is being reassigned and you don't know who it's going to yet. Instead of leaving the old person's name on it, you can hit "Mark as TBD" — the system archives the original record to preserve the history, and creates a fresh active copy with the assigned user, password, and phone number all set to TBD. Once you know who it's going to, you just edit that copy.
 
 ---
 
-### Change History & Undo
+### History & Undo
 
-Every action taken on a device is recorded in the history log:
+Every single change made in the inventory is logged — who did it, when, and what exactly changed. This is the audit trail.
 
-- Added, Edited, Deleted, Archived, Restored, Mark as TBD
-
-The history page shows:
-
-- Timestamp and who performed the action
-- Device details at the time of the action
-- What fields changed (for edits — shows old value → new value)
-
-**Undo** is available for all action types:
-
-| Action | Undo behavior |
-|---|---|
-| Added | Deletes the device |
-| Edited | Reverts all changed fields to their previous values |
-| Deleted | Restores the device from snapshot |
-| Archived | Restores device to active |
-| Restored | Re-archives the device |
-| Mark as TBD | Removes TBD copy and un-archives the original |
-
-The history log can be searched by model, serial number, location, or assigned user, and filtered by action type.
+If someone makes a mistake — accidentally deletes a device, archives the wrong one, or saves a bad edit — you can go into the history and hit **Undo** to reverse it. The app is smart about undoing: if you undo a deletion, it brings the full device back exactly as it was. If you undo an edit, it puts all the fields back to what they were before.
 
 ---
 
 ### Import & Export
 
-#### Import (CSV or Excel)
+#### Import
+If you already have device records in a spreadsheet, you can bring them straight into the app without typing everything in one by one. The app accepts both CSV files and Excel (.xlsx) files. It's also flexible — if your spreadsheet has columns named "Username" or "Service Tag" instead of exactly what the app expects, it'll figure it out.
 
-Bulk-import devices from a spreadsheet:
+For Excel files with multiple sheets, it'll ask you which sheet to pull from before importing.
 
-- **CSV** — uploaded and imported immediately
-- **Excel (.xlsx)** — upload the file, then choose which sheet to import from
+A template CSV is available to download if you want a clean starting point.
 
-The importer is flexible with column names — it recognizes common aliases such as `Username`, `Service Tag`, `Serial #`, `Location`, etc.
-
-Required columns: `device_type`, `location_code`
-
-A **CSV template** can be downloaded from the import page as a starting point.
-
-Rows with missing required fields are skipped and a summary is shown after import.
-
-#### Export (Excel)
-
-Exports inventory to a formatted `.xlsx` file. Choose to export:
-
-- **Active** devices only
-- **Archived** devices only
-- **All** devices
-
-The export matches the column layout of the original MHK spreadsheet format.
+#### Export
+You can export the full inventory to an Excel file at any time — just active devices, just archived ones, or everything. The export is formatted to match the original MHK spreadsheet layout, so it fits right into any existing workflows.
 
 ---
 
-### Ticket Management
+### Support Tickets
 
-#### Submitting a Ticket
+The ticket system is for logging and tracking IT issues that come in. Instead of getting a one-off email that disappears, every issue becomes a tracked ticket.
 
-Each ticket captures:
+When someone submits a ticket they fill in:
+- What the issue is (title and description)
+- What kind of problem it is (hardware, software, network, password reset, etc.)
+- How urgent it is (Low, Medium, High, or Urgent)
+- Who submitted it
 
-| Field | Description |
-|---|---|
-| Title | Short description of the issue |
-| Description | Full details |
-| Category | Hardware, Software, Network/WiFi, Password Reset, Setup/Installation, Other |
-| Priority | Low, Medium, High, Urgent |
-| Submitted By | Name of the person submitting |
-
-#### Managing Tickets
-
-- View all tickets with filters for status, category, and priority
-- Search tickets by title, description, or submitter
-- Update ticket status: **Open → In Progress → Completed → Closed**
-- View full ticket detail page
-- Delete a ticket
-
-Tickets are sorted newest-first by default.
+From there, the IT team can update the ticket's status as they work on it — Open, In Progress, Completed, or Closed. You can filter and search tickets to find what you're looking for, and each ticket has its own detail page so you can see the full picture in one place.
 
 ---
 
-### Location & Island Management
+### Managing Locations, Islands, and Device Types
 
-Locations and islands are managed directly from the Inventory page:
+All the dropdown options in the app — office locations, islands, and device types — are fully customizable. You don't need to touch any code to add a new office location or a new device type. Just go to the inventory page, find the management panel, and add or remove options from there.
 
-- **Add / remove location codes** — locations can be tied to an island
-- **Add / remove islands** — used to filter inventory and the dashboard
-- Removing a location or island that is still in use shows a warning and requires confirmation
-
----
-
-### Device Type Management
-
-The list of device types shown in dropdowns is fully customizable:
-
-- Add new device types
-- Remove existing ones (with a warning if any devices still use that type)
-- Any device type imported from a spreadsheet that doesn't exist yet is added automatically
+The app will warn you before you remove something that's still being used by devices, so you don't accidentally break anything.
 
 ---
 
@@ -232,12 +123,3 @@ The list of device types shown in dropdowns is fully customizable:
 | 201 | Remote Office – Big Island |
 | 202 | Remote Office – Oahu |
 | 999 | Mobile / Field Device |
-
----
-
-## Notes
-
-- All data is stored in a single SQLite database file (`data/inventory.db`)
-- The app runs on port **5001** by default
-- Designed for single-office or small-team use
-- No external server or internet connection required
