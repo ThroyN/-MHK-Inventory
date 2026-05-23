@@ -18,7 +18,6 @@
         Your file has <strong>{{ sheets|length }}</strong> sheet(s). Choose which one to import from.
     </p>
     <form method="POST" action="{{ url_for('import_inventory') }}">
-        <input type="hidden" name="temp_path" value="{{ temp_path }}">
         <div class="form-group">
             <label for="sheet_name">Sheet Name <span class="required">*</span></label>
             <select name="sheet_name" id="sheet_name" required>

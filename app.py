@@ -326,21 +326,27 @@ def load_history():
 
 def save_history(history):
     conn = get_db()
-    conn.execute('DELETE FROM history')
-    for h in history:
-        conn.execute('''INSERT INTO history
-            (id,timestamp,performed_by,action,device_id,device_type,model,
-             serial_number,location_code,island,assigned_user,changes,device_snapshot)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
-            h.get('id'), h.get('timestamp',''), h.get('performed_by',''),
-            h.get('action',''), h.get('device_id'),
-            h.get('device_type',''), h.get('model',''),
-            h.get('serial_number',''), h.get('location_code',''),
-            h.get('island',''), h.get('assigned_user',''),
-            json.dumps(h.get('changes',{})),
-            json.dumps(h.get('device_snapshot',{}))))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM history')
+        for h in history:
+            conn.execute('''INSERT INTO history
+                (id,timestamp,performed_by,action,device_id,device_type,model,
+                 serial_number,location_code,island,assigned_user,changes,device_snapshot)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                h.get('id'), h.get('timestamp',''), h.get('performed_by',''),
+                h.get('action',''), h.get('device_id'),
+                h.get('device_type',''), h.get('model',''),
+                h.get('serial_number',''), h.get('location_code',''),
+                h.get('island',''), h.get('assigned_user',''),
+                json.dumps(h.get('changes',{})),
+                json.dumps(h.get('device_snapshot',{}))))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def log_history(action, device, changes=None):
     history = load_history()
@@ -375,11 +381,17 @@ def load_users():
 
 def save_users(users):
     conn = get_db()
-    conn.execute('DELETE FROM users')
-    for name in users:
-        conn.execute('INSERT INTO users (name) VALUES (?)', (name,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM users')
+        for name in users:
+            conn.execute('INSERT INTO users (name) VALUES (?)', (name,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def load_device_types():
     conn = get_db()
@@ -393,11 +405,17 @@ def load_device_types():
 
 def save_device_types(types):
     conn = get_db()
-    conn.execute('DELETE FROM device_types')
-    for t in types:
-        conn.execute('INSERT INTO device_types (name) VALUES (?)', (t,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM device_types')
+        for t in types:
+            conn.execute('INSERT INTO device_types (name) VALUES (?)', (t,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def load_locations():
     conn = get_db()
@@ -407,12 +425,18 @@ def load_locations():
 
 def save_locations(locations):
     conn = get_db()
-    conn.execute('DELETE FROM locations')
-    for loc in locations:
-        conn.execute('INSERT INTO locations (code, island) VALUES (?,?)',
-                     (loc.get('code',''), loc.get('island','')))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM locations')
+        for loc in locations:
+            conn.execute('INSERT INTO locations (code, island) VALUES (?,?)',
+                         (loc.get('code',''), loc.get('island','')))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def load_islands():
     conn = get_db()
@@ -422,11 +446,17 @@ def load_islands():
 
 def save_islands(islands):
     conn = get_db()
-    conn.execute('DELETE FROM islands')
-    for name in islands:
-        conn.execute('INSERT INTO islands (name) VALUES (?)', (name,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM islands')
+        for name in islands:
+            conn.execute('INSERT INTO islands (name) VALUES (?)', (name,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 @app.before_request
 def require_user():
@@ -589,6 +619,9 @@ def add_location():
 def delete_location():
     locations = load_locations()
     code = request.form.get('location', '').strip()
+    if not any(l['code'] == code for l in locations):
+        flash('Location not found.', 'error')
+        return redirect(url_for('inventory_list'))
     inventory = load_inventory()
     in_use = sum(1 for d in inventory if d.get('location_code', '') == code)
     confirm = request.form.get('confirm_delete', 'false')
@@ -734,9 +767,10 @@ def add_device():
             'phone': request.form.get('phone', ''),
             'notes': request.form.get('notes', ''),
             'archived': False,
-            'added_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'added_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': ''
         }
-        
+
         inventory.append(new_device)
         save_inventory(inventory)
         log_history('Added', new_device)
@@ -1149,7 +1183,10 @@ def update_ticket_status(ticket_id):
     ticket = next((t for t in tickets if t['id'] == ticket_id), None)
     
     if ticket:
-        new_status = request.form.get('status')
+        new_status = request.form.get('status', '').strip()
+        if new_status not in TICKET_STATUSES:
+            flash('Invalid status value.', 'error')
+            return redirect(url_for('view_ticket', ticket_id=ticket_id))
         ticket['status'] = new_status
         ticket['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         save_tickets(tickets)
@@ -1305,8 +1342,8 @@ def import_inventory():
     if request.method == 'POST':
         # Phase 2: user selected a sheet from an xlsx
         if request.form.get('sheet_name'):
-            temp_path = request.form.get('temp_path', '')
             sheet_name = request.form.get('sheet_name')
+            temp_path = session.pop('xlsx_temp_path', '')
 
             if not temp_path or not os.path.exists(temp_path):
                 flash('Upload session expired. Please upload the file again.', 'error')
@@ -1384,11 +1421,17 @@ def import_inventory():
             os.close(temp_fd)
             file.save(temp_path)
 
-            wb = openpyxl.load_workbook(temp_path, read_only=True)
-            sheets = wb.sheetnames
-            wb.close()
+            try:
+                wb = openpyxl.load_workbook(temp_path, read_only=True)
+                sheets = wb.sheetnames
+                wb.close()
+            except Exception as e:
+                os.remove(temp_path)
+                flash(f'Failed to read Excel file: {e}', 'error')
+                return redirect(url_for('import_inventory'))
 
-            return render_template('import_inventory.html', sheets=sheets, temp_path=temp_path)
+            session['xlsx_temp_path'] = temp_path
+            return render_template('import_inventory.html', sheets=sheets)
 
         else:
             flash('Please upload a .csv or .xlsx file.', 'error')
