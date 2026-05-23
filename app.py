@@ -12,7 +12,7 @@ import openpyxl
 from openpyxl.styles import Font
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-in-production'
+app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -258,22 +258,28 @@ def load_inventory():
 
 def save_inventory(inventory):
     conn = get_db()
-    conn.execute('DELETE FROM inventory')
-    for d in inventory:
-        conn.execute('''INSERT INTO inventory
-            (id,device_type,model,serial_number,assigned_user,password,
-             purchase_date,condition,location_code,island,phone,notes,
-             archived,archived_at,added_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
-            d.get('id'), d.get('device_type',''), d.get('model',''),
-            d.get('serial_number',''), d.get('assigned_user',''),
-            d.get('password',''), d.get('purchase_date',''),
-            d.get('condition','Good'), d.get('location_code',''),
-            d.get('island',''), d.get('phone',''), d.get('notes',''),
-            1 if d.get('archived') else 0,
-            d.get('archived_at',''), d.get('added_at',''), d.get('updated_at','')))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM inventory')
+        for d in inventory:
+            conn.execute('''INSERT INTO inventory
+                (id,device_type,model,serial_number,assigned_user,password,
+                 purchase_date,condition,location_code,island,phone,notes,
+                 archived,archived_at,added_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                d.get('id'), d.get('device_type',''), d.get('model',''),
+                d.get('serial_number',''), d.get('assigned_user',''),
+                d.get('password',''), d.get('purchase_date',''),
+                d.get('condition','Good'), d.get('location_code',''),
+                d.get('island',''), d.get('phone',''), d.get('notes',''),
+                1 if d.get('archived') else 0,
+                d.get('archived_at',''), d.get('added_at',''), d.get('updated_at','')))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def load_tickets():
     conn = get_db()
@@ -283,17 +289,23 @@ def load_tickets():
 
 def save_tickets(tickets):
     conn = get_db()
-    conn.execute('DELETE FROM tickets')
-    for t in tickets:
-        conn.execute('''INSERT INTO tickets
-            (id,title,description,category,priority,status,submitted_by,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?)''', (
-            t.get('id'), t.get('title',''), t.get('description',''),
-            t.get('category',''), t.get('priority','Medium'),
-            t.get('status','Open'), t.get('submitted_by',''),
-            t.get('created_at',''), t.get('updated_at','')))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute('BEGIN')
+        conn.execute('DELETE FROM tickets')
+        for t in tickets:
+            conn.execute('''INSERT INTO tickets
+                (id,title,description,category,priority,status,submitted_by,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)''', (
+                t.get('id'), t.get('title',''), t.get('description',''),
+                t.get('category',''), t.get('priority','Medium'),
+                t.get('status','Open'), t.get('submitted_by',''),
+                t.get('created_at',''), t.get('updated_at','')))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def generate_id(items):
     if not items:
@@ -335,7 +347,7 @@ def log_history(action, device, changes=None):
     entry = {
         'id': generate_id(history),
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'performed_by': session.get('current_user', 'Unknown'),
+        'performed_by': session.get('current_user', 'Unknown') if session else 'System',
         'action': action,
         'device_id': device.get('id'),
         'device_type': device.get('device_type', ''),
@@ -764,7 +776,8 @@ def edit_device(device_id):
         device['assigned_user'] = request.form.get('assigned_user', '')
         device['password'] = request.form.get('password', '')
         device['purchase_date'] = request.form.get('purchase_date', '')
-        device['condition'] = request.form.get('condition', 'Good')
+        condition = request.form.get('condition', 'Good')
+        device['condition'] = condition if condition in DEVICE_CONDITIONS else 'Good'
         device['location_code'] = request.form.get('location_code')
         device['island'] = request.form.get('island', device.get('island', ''))
         device['phone'] = request.form.get('phone', '')
@@ -935,7 +948,8 @@ def undo_history(history_id):
         device = next((d for d in inventory if d['id'] == device_id), None)
         if device and entry.get('changes'):
             for field, diff in entry['changes'].items():
-                device[field] = diff.get('from', device.get(field, ''))
+                if 'from' in diff:
+                    device[field] = diff['from']
             save_inventory(inventory)
             history = [e for e in history if e['id'] != history_id]
             history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -1313,8 +1327,12 @@ def import_inventory():
                         for col in CSV_COLUMNS
                     })
                 wb.close()
+            except Exception as e:
+                flash(f'Failed to read file: {e}', 'error')
+                return redirect(url_for('import_inventory'))
             finally:
-                os.remove(temp_path)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
             imported, skipped, skip_reasons = _process_rows(rows)
 
