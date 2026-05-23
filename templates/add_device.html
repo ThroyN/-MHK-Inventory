@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Add Device - IT Management System{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 2rem; color: #2c3e50;">➕ Add New Device</h2>
+
+    <div class="card">
+        <form method="POST" action="{{ url_for('add_device') }}">
+            <div class="form-group">
+                <label>Device Type <span class="required">*</span></label>
+                <select name="device_type" required>
+                    <option value="">Select device type...</option>
+                    {% for type in device_types %}
+                        <option value="{{ type }}">{{ type }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Model <span class="required">*</span></label>
+                <input type="text" name="model" placeholder="e.g., MacBook Pro 14-inch" required>
+            </div>
+
+            <div class="form-group">
+                <label>Serial Number <span class="required">*</span></label>
+                <input type="text" name="serial_number" placeholder="e.g., C02XJ5YGJGH5" required>
+            </div>
+
+            <div class="form-group">
+                <label>Assigned User</label>
+                <input type="text" name="assigned_user" placeholder="e.g., John Smith">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="text" name="password" placeholder="e.g., dra#1316!">
+            </div>
+
+            <div class="form-group">
+                <label>Island</label>
+                <select name="island">
+                    <option value="">Select island...</option>
+                    {% for island in all_islands %}
+                        <option value="{{ island }}">{{ island }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Location Code <span class="required">*</span></label>
+                <select name="location_code" required id="location-select">
+                    <option value="">Select location...</option>
+                    {% for island, locs in locations_by_island.items() %}
+                        <optgroup label="{{ island }}">
+                            {% for loc in locs %}
+                                <option value="{{ loc }}">{{ loc }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Warranty End Date</label>
+                <input type="text" name="purchase_date" placeholder="e.g., 3/7/30">
+            </div>
+
+            <div class="form-group">
+                <label>Condition <span class="required">*</span></label>
+                <select name="condition" required>
+                    {% for condition in conditions %}
+                        <option value="{{ condition }}" {% if condition == 'Good' %}selected{% endif %}>
+                            {{ condition }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="text" name="phone" placeholder="e.g., 808-807-2319">
+            </div>
+
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" placeholder="Additional information about this device..."></textarea>
+            </div>
+
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn btn-success">💾 Save Device</button>
+                <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

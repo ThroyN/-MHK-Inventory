@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Tickets - IT Management System{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2 style="color: #2c3e50;">🎫 Support Tickets</h2>
+    <a href="{{ url_for('add_ticket') }}" class="btn btn-success">➕ Submit New Ticket</a>
+</div>
+
+<form method="GET" action="{{ url_for('tickets_list') }}" class="filter-bar">
+    <input type="text" name="search" placeholder="Search tickets by title, description, or user..." 
+           value="{{ search }}" style="flex: 2;">
+    
+    <select name="status">
+        <option value="">All Statuses</option>
+        {% for status in ticket_statuses %}
+            <option value="{{ status }}" {% if status == selected_status %}selected{% endif %}>
+                {{ status }}
+            </option>
+        {% endfor %}
+    </select>
+    
+    <select name="category">
+        <option value="">All Categories</option>
+        {% for category in ticket_categories %}
+            <option value="{{ category }}" {% if category == selected_category %}selected{% endif %}>
+                {{ category }}
+            </option>
+        {% endfor %}
+    </select>
+    
+    <select name="priority">
+        <option value="">All Priorities</option>
+        {% for priority in priority_levels %}
+            <option value="{{ priority }}" {% if priority == selected_priority %}selected{% endif %}>
+                {{ priority }}
+            </option>
+        {% endfor %}
+    </select>
+    
+    <button type="submit" class="btn btn-primary">🔍 Filter</button>
+    <a href="{{ url_for('tickets_list') }}" class="btn btn-secondary">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Tickets ({{ tickets|length }} items)</h3>
+    </div>
+    
+    {% if tickets %}
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Submitted By</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ticket in tickets %}
+                    <tr>
+                        <td><strong>#{{ ticket.id }}</strong></td>
+                        <td>{{ ticket.title }}</td>
+                        <td>{{ ticket.category }}</td>
+                        <td>
+                            <span class="badge badge-{{ ticket.priority.lower() }}">
+                                {{ ticket.priority }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ ticket.status.lower().replace(' ', '-') }}">
+                                {{ ticket.status }}
+                            </span>
+                        </td>
+                        <td>{{ ticket.submitted_by }}</td>
+                        <td>{{ ticket.created_at }}</td>
+                        <td>
+                            <a href="{{ url_for('view_ticket', ticket_id=ticket.id) }}" 
+                               class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color: #7f8c8d; text-align: center; padding: 2rem;">
+            No tickets found. {% if search or selected_status or selected_category or selected_priority %}Try adjusting your filters.{% else %}Submit your first ticket to get started!{% endif %}
+        </p>
+    {% endif %}
+</div>
+{% endblock %}

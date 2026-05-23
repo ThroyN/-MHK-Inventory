@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Device - IT Management System{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <h2 style="margin-bottom: 2rem; color: #2c3e50;">✏️ Edit Device</h2>
+
+    <div class="card">
+        <form method="POST" action="{{ url_for('edit_device', device_id=device.id) }}">
+            <div class="form-group">
+                <label>Device Type <span class="required">*</span></label>
+                <select name="device_type" required>
+                    {% for type in device_types %}
+                        <option value="{{ type }}" {% if type == device.device_type %}selected{% endif %}>
+                            {{ type }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Model <span class="required">*</span></label>
+                <input type="text" name="model" value="{{ device.model }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Serial Number <span class="required">*</span></label>
+                <input type="text" name="serial_number" value="{{ device.serial_number }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Assigned User</label>
+                <input type="text" name="assigned_user" value="{{ device.assigned_user }}">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="text" name="password" value="{{ device.password or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label>Island</label>
+                <select name="island">
+                    <option value="">Select island...</option>
+                    {% for island in all_islands %}
+                        <option value="{{ island }}" {% if island == device.island %}selected{% endif %}>{{ island }}</option>
+                    {% endfor %}
+                    {% if device.island and device.island not in all_islands %}
+                        <option value="{{ device.island }}" selected>{{ device.island }} (current)</option>
+                    {% endif %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Location Code <span class="required">*</span></label>
+                <select name="location_code" required>
+                    <option value="">Select location...</option>
+                    {% for island, locs in locations_by_island.items() %}
+                        <optgroup label="{{ island }}">
+                            {% for loc in locs %}
+                                <option value="{{ loc }}" {% if loc == device.location_code %}selected{% endif %}>{{ loc }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    {% endfor %}
+                    {% if device.location_code and device.location_code not in locations_by_island.values()|sum(start=[]) %}
+                        <option value="{{ device.location_code }}" selected>{{ device.location_code }}</option>
+                    {% endif %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Warranty End Date</label>
+                <input type="text" name="purchase_date" value="{{ device.purchase_date }}">
+            </div>
+
+            <div class="form-group">
+                <label>Condition <span class="required">*</span></label>
+                <select name="condition" required>
+                    {% for condition in conditions %}
+                        <option value="{{ condition }}" {% if condition == device.condition %}selected{% endif %}>
+                            {{ condition }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="text" name="phone" value="{{ device.phone or '' }}" placeholder="e.g., 808-807-2319">
+            </div>
+
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes">{{ device.notes }}</textarea>
+            </div>
+
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn btn-success">💾 Update Device</button>
+                <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Inventory Version History{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2 style="color: #2c3e50;">🕓 Inventory Version History</h2>
+    <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">← Back to Inventory</a>
+</div>
+
+<form method="GET" action="{{ url_for('inventory_history') }}" class="filter-bar">
+    <input type="text" name="search" placeholder="Search by model, serial, location, user..."
+           value="{{ search }}" style="flex: 2;">
+    <select name="action" onchange="this.form.submit()">
+        <option value="">All Actions</option>
+        {% for action in all_actions %}
+            <option value="{{ action }}" {% if action == selected_action %}selected{% endif %}>{{ action }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">🔍 Filter</button>
+    <a href="{{ url_for('inventory_history') }}" class="btn btn-secondary">Clear</a>
+</form>
+
+<div class="card" style="padding: 1.5rem;">
+    <div class="card-header">
+        <h3 class="card-title">{{ history|length }} change{% if history|length != 1 %}s{% endif %}</h3>
+    </div>
+
+    {% if history %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Changed By</th>
+                    <th>Action</th>
+                    <th>Device / Model</th>
+                    <th>Serial</th>
+                    <th>Location</th>
+                    <th>Island</th>
+                    <th>Assigned To</th>
+                    <th>Changes</th>
+                    <th>Undo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in history %}
+                <tr>
+                    <td style="font-size:0.82rem; white-space:nowrap; color:#7f8c8d;">{{ entry.timestamp }}</td>
+                    <td style="font-size:0.85rem; font-weight:600; white-space:nowrap;">{{ entry.performed_by or '–' }}</td>
+                    <td>
+                        <span class="badge" style="
+                            {% if 'Undone' in entry.action %}background-color:#e74c3c;
+                            {% elif 'Added' in entry.action %}background-color:#27ae60;
+                            {% elif 'Edited' in entry.action %}background-color:#3498db;
+                            {% elif 'Deleted' in entry.action %}background-color:#e74c3c;
+                            {% elif 'Archived' in entry.action %}background-color:#f39c12;
+                            {% elif 'Restored' in entry.action %}background-color:#27ae60;
+                            {% else %}background-color:#95a5a6;{% endif %}
+                            color:white; font-size:0.78rem;">
+                            {{ entry.action }}
+                        </span>
+                    </td>
+                    <td>
+                        <span style="font-size:0.72rem; color:#7f8c8d; text-transform:uppercase;">{{ entry.device_type }}</span><br>
+                        <strong>{{ entry.model }}</strong>
+                    </td>
+                    <td style="font-family:monospace; font-size:0.82rem;">{{ entry.serial_number or '–' }}</td>
+                    <td style="font-size:0.85rem;">{{ entry.location_code or '–' }}</td>
+                    <td style="font-size:0.85rem;">{{ entry.island or '–' }}</td>
+                    <td style="font-size:0.85rem;">{{ entry.assigned_user or '–' }}</td>
+                    <td style="font-size:0.82rem;">
+                        {% if entry.changes %}
+                            {% for field, diff in entry.changes.items() %}
+                                <div><strong>{{ field }}:</strong>
+                                    <span style="color:#e74c3c; text-decoration:line-through;">{{ diff.from or '–' }}</span>
+                                    → <span style="color:#27ae60;">{{ diff.to or '–' }}</span>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <span style="color:#bdc3c7;">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set undoable = ['Added', 'Edited', 'Deleted', 'Archived', 'Restored', 'Archived (TBD copy created)', 'Added (TBD copy)'] %}
+                        {% if entry.action in undoable %}
+                            {% set is_tbd_pair = entry.action in ['Archived (TBD copy created)', 'Added (TBD copy)'] %}
+                            <form method="POST" action="{{ url_for('undo_history', history_id=entry.id) }}"
+                                  onsubmit="return confirm(this.dataset.msg);"
+                                  data-msg="{% if is_tbd_pair %}Undo this action? This will undo BOTH the archive and TBD copy together.{% else %}Undo this action?{% endif %}">
+                                <button type="submit" class="btn"
+                                        style="background-color:{% if is_tbd_pair %}#8e44ad{% else %}#e74c3c{% endif %}; color:white; padding:0.3rem 0.65rem; font-size:0.78rem; white-space:nowrap;">
+                                    ↩ Undo{% if is_tbd_pair %} (pair){% endif %}
+                                </button>
+                            </form>
+                        {% else %}
+                            <span style="color:#bdc3c7; font-size:0.78rem;">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="color:#7f8c8d; text-align:center; padding:2rem;">No history yet. Changes will appear here after you add, edit, archive, or delete devices.</p>
+    {% endif %}
+</div>
+{% endblock %}

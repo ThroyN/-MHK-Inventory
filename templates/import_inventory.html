@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Import Inventory - IT Management System{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2 style="color: #2c3e50;">📥 Import Inventory</h2>
+    <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">← Back to Inventory</a>
+</div>
+
+{% if sheets %}
+<!-- Phase 2: xlsx uploaded, pick a sheet -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Select a Sheet to Import</h3>
+    </div>
+    <p style="margin-bottom: 1.5rem; color: #555;">
+        Your file has <strong>{{ sheets|length }}</strong> sheet(s). Choose which one to import from.
+    </p>
+    <form method="POST" action="{{ url_for('import_inventory') }}">
+        <input type="hidden" name="temp_path" value="{{ temp_path }}">
+        <div class="form-group">
+            <label for="sheet_name">Sheet Name <span class="required">*</span></label>
+            <select name="sheet_name" id="sheet_name" required>
+                {% for sheet in sheets %}
+                    <option value="{{ sheet }}">{{ sheet }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-success">📥 Import Selected Sheet</button>
+            <a href="{{ url_for('import_inventory') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{% else %}
+<!-- Phase 1: upload form -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Upload File</h3>
+    </div>
+
+    <div style="margin-bottom: 1.5rem; padding: 1rem; background: #eaf4fb; border-left: 4px solid #3498db; border-radius: 4px;">
+        <strong>Accepted formats:</strong> .csv, .xlsx<br>
+        <strong>Required columns:</strong> device_type, model, serial_number, location_code<br>
+        <strong>Optional columns:</strong> assigned_user, purchase_date, condition, notes<br>
+        <strong>Valid device types:</strong> Laptop, Desktop, iPhone, Android Phone, Tablet, Monitor, Printer, Router, Other<br>
+        <strong>Valid conditions:</strong> New, Good, Fair, Poor, Broken (defaults to Good if blank)<br>
+        <strong>Location codes:</strong> 101, 102, 103, 104, 105, 201, 202, 999
+    </div>
+
+    <form method="POST" action="{{ url_for('import_inventory') }}" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="csv_file">Select File <span class="required">*</span></label>
+            <input type="file" name="csv_file" id="csv_file" accept=".csv,.xlsx" required>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button type="submit" class="btn btn-success">📥 Upload & Import</button>
+            <a href="{{ url_for('download_csv_template') }}" class="btn btn-primary">⬇️ Download CSV Template</a>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">How It Works</h3>
+    </div>
+    <ol style="padding-left: 1.5rem; line-height: 2;">
+        <li><strong>CSV:</strong> Upload directly — devices are imported immediately.</li>
+        <li><strong>Excel (.xlsx):</strong> Upload the file, then choose which sheet to import from.</li>
+        <li>Your spreadsheet must have a header row with the column names listed above.</li>
+        <li>Rows with missing required fields or an unrecognized device type are skipped.</li>
+    </ol>
+</div>
+{% endif %}
+{% endblock %}

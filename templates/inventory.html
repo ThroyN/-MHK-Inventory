@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory - IT Management System{% endblock %}
+
+{% block content %}
+<style>
+    /* Widen the page for the inventory table */
+    .container { max-width: 1500px !important; }
+
+    /* Compact table cells */
+    .inv-table th,
+    .inv-table td {
+        padding: 0.6rem 0.75rem;
+        font-size: 0.88rem;
+    }
+
+    /* Sticky Actions column */
+    .inv-table th.col-actions,
+    .inv-table td.col-actions {
+        position: sticky;
+        right: 0;
+        background: white;
+        box-shadow: -3px 0 6px rgba(0,0,0,0.07);
+        z-index: 1;
+    }
+    .inv-table th.col-actions {
+        background: #f8f9fa;
+        z-index: 2;
+    }
+    .inv-table tr:hover td.col-actions {
+        background: #f8f9fa;
+    }
+    .inv-table tr.archived-row td.col-actions {
+        background: #f8f8f8;
+    }
+
+    /* Action button group */
+    .action-btn-group {
+        display: flex;
+        gap: 0.35rem;
+        align-items: center;
+        white-space: nowrap;
+    }
+    .action-btn-group .btn,
+    .action-btn-group button {
+        padding: 0.3rem 0.65rem;
+        font-size: 0.8rem;
+        border-radius: 5px;
+    }
+
+    /* Device type label inside model cell */
+    .device-label {
+        display: inline-block;
+        font-size: 0.72rem;
+        color: #7f8c8d;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        margin-bottom: 2px;
+    }
+</style>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2 style="color: #2c3e50;">📦 Inventory Management</h2>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{{ url_for('import_inventory') }}" class="btn btn-primary">📥 Import File</a>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('exportModal').style.display='flex'">📤 Export XLSX</button>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('deviceTypesModal').style.display='flex'">⚙️ Manage Types</button>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('locationsModal').style.display='flex'">🗺️ Manage Locations</button>
+        <a href="{{ url_for('add_device') }}" class="btn btn-success">➕ Add New Device</a>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div id="exportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:10px; padding:2rem; max-width:380px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <h3 style="margin-bottom:0.5rem; color:#2c3e50;">Export Inventory</h3>
+        <p style="color:#7f8c8d; margin-bottom:1.5rem; font-size:0.95rem;">Which devices would you like to export?</p>
+        <div style="display:flex; flex-direction:column; gap:0.75rem;">
+            <a href="{{ url_for('export_inventory') }}?filter=active" class="btn btn-success" style="text-align:left; padding:0.75rem 1rem;">
+                <strong>Active Devices</strong><br>
+                <small style="font-weight:normal; opacity:0.9;">Only current active inventory</small>
+            </a>
+            <a href="{{ url_for('export_inventory') }}?filter=archived" class="btn" style="background:#f39c12; color:white; text-align:left; padding:0.75rem 1rem;">
+                <strong>Archived Devices</strong><br>
+                <small style="font-weight:normal; opacity:0.9;">Only archived/predecessor devices</small>
+            </a>
+            <a href="{{ url_for('export_inventory') }}?filter=all" class="btn btn-primary" style="text-align:left; padding:0.75rem 1rem;">
+                <strong>All Devices</strong><br>
+                <small style="font-weight:normal; opacity:0.9;">Everything including archived</small>
+            </a>
+            <button onclick="document.getElementById('exportModal').style.display='none'" class="btn btn-secondary" style="width:100%;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<form method="GET" action="{{ url_for('inventory_list') }}" class="filter-bar">
+    <input type="text" name="search" placeholder="Search by model, serial, user, or location..."
+           value="{{ search }}" style="flex: 2;">
+
+    <select name="device_type" onchange="this.form.submit()">
+        <option value="">All Device Types</option>
+        {% for type in device_types %}
+            <option value="{{ type }}" {% if type == selected_device_type %}selected{% endif %}>
+                {{ device_type_icons.get(type, '📦') }} {{ type }}
+            </option>
+        {% endfor %}
+    </select>
+
+    <select name="location" onchange="this.form.submit()">
+        <option value="">All Locations</option>
+        {% for island, locs in locations_by_island.items() %}
+            <optgroup label="{{ island }}">
+                {% for loc in locs %}
+                    <option value="{{ loc }}" {% if loc == selected_location %}selected{% endif %}>{{ loc }}</option>
+                {% endfor %}
+            </optgroup>
+        {% endfor %}
+    </select>
+
+    <select name="island" onchange="this.form.submit()">
+        <option value="">All Islands</option>
+        {% for island in all_islands %}
+            <option value="{{ island }}" {% if island == selected_island %}selected{% endif %}>{{ island }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="archive_filter" onchange="this.form.submit()">
+        <option value="active" {% if archive_filter == 'active' %}selected{% endif %}>Active Devices</option>
+        <option value="archived" {% if archive_filter == 'archived' %}selected{% endif %}>Archived (Predecessors)</option>
+        <option value="all" {% if archive_filter == 'all' %}selected{% endif %}>All Devices</option>
+    </select>
+
+    <button type="submit" class="btn btn-primary">🔍 Filter</button>
+    <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">Clear</a>
+</form>
+
+<div class="card" style="padding: 1.5rem;">
+    <div class="card-header">
+        <h3 class="card-title">Devices ({{ inventory|length }} items)</h3>
+    </div>
+
+    {% if inventory %}
+        <div class="table-container">
+            <table class="inv-table">
+                <thead>
+                    <tr>
+                        <th>Device / Model</th>
+                        <th>Serial Number</th>
+                        <th>Assigned To</th>
+                        <th>Password</th>
+                        <th>Location</th>
+                        <th>Warranty End</th>
+                        <th>Phone</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in inventory %}
+                    <tr class="{% if device.archived %}archived-row{% endif %}"
+                        style="{% if device.archived %}opacity: 0.65; background-color: #f8f8f8;{% endif %}">
+
+                        <td>
+                            <span class="device-label">{{ device_type_icons.get(device.device_type, '📦') }} {{ device.device_type }}</span>
+                            {% if device.archived %}<span class="device-label" style="color: #e67e22; margin-left: 4px;">· Archived</span>{% endif %}
+                            <br>
+                            <strong>{{ device.model }}</strong>
+                        </td>
+                        <td style="font-family: monospace; font-size: 0.82rem;">{{ device.serial_number }}</td>
+                        <td>{{ device.assigned_user or '–' }}</td>
+                        <td style="font-family: monospace; font-size: 0.82rem;">{{ device.password or '–' }}</td>
+                        <td>
+                            <strong style="font-size: 0.85rem;">{{ device.location_code }}</strong><br>
+                            <small style="color: #7f8c8d;">{{ device.island or device.location_name }}</small>
+                        </td>
+                        <td>{{ device.purchase_date or '–' }}</td>
+                        <td style="font-size: 0.85rem; white-space: nowrap;">{{ device.phone or '–' }}</td>
+                        <td class="col-actions">
+                            <div class="action-btn-group">
+                                {% if not device.archived %}
+                                    <a href="{{ url_for('edit_device', device_id=device.id) }}"
+                                       class="btn btn-primary">Edit</a>
+                                    <button type="button" class="btn"
+                                            style="background-color: #f39c12; color: white;"
+                                            data-device-id="{{ device.id }}"
+                                            data-device-model="{{ device.model }}"
+                                            onclick="openArchiveModal(this)">Archive</button>
+                                {% else %}
+                                    <form method="POST" action="{{ url_for('unarchive_device', device_id=device.id) }}"
+                                          style="display: inline;">
+                                        <button type="submit" class="btn"
+                                                style="background-color: #27ae60; color: white;">Restore</button>
+                                    </form>
+                                {% endif %}
+                                <form method="POST" action="{{ url_for('delete_device', device_id=device.id) }}"
+                                      style="display: inline;"
+                                      onsubmit="return confirm('Permanently delete this device?');">
+                                    <button type="submit" class="btn btn-danger">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color: #7f8c8d; text-align: center; padding: 2rem;">
+            No devices found. {% if search or selected_device_type or selected_location %}Try adjusting your filters.{% else %}Add your first device to get started!{% endif %}
+        </p>
+    {% endif %}
+</div>
+
+<!-- Manage Locations & Islands Modal -->
+<div id="locationsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:10px; padding:2rem; max-width:500px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2); max-height:85vh; overflow-y:auto;">
+        <h3 style="margin-bottom:1.5rem; color:#2c3e50;">🗺️ Manage Locations & Islands</h3>
+
+        <!-- Islands section -->
+        <div style="margin-bottom:1.5rem;">
+            <div style="font-size:0.85rem; font-weight:600; color:#95a5a6; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">Islands</div>
+            <form method="POST" action="{{ url_for('add_island') }}" style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+                <input type="text" name="new_island" placeholder="New island name..." style="flex:1; padding:0.5rem 0.75rem; border:1px solid #ddd; border-radius:6px; font-size:0.9rem;">
+                <button type="submit" class="btn btn-success" style="white-space:nowrap;">Add</button>
+            </form>
+            <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                {% for island in saved_islands %}
+                {% set island_in_use = full_inventory | selectattr('island', 'equalto', island) | list | length %}
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.75rem; background:#f8f9fa; border-radius:6px; font-size:0.9rem;">
+                    <span>
+                        {{ island }}
+                        {% if island_in_use > 0 %}
+                            <small style="color:#e67e22;"> ({{ island_in_use }} device{{ 's' if island_in_use != 1 }})</small>
+                        {% endif %}
+                    </span>
+                    <form method="POST" action="{{ url_for('delete_island') }}" style="margin:0;"
+                          onsubmit="return confirm('{% if island_in_use > 0 %}WARNING: {{ island_in_use }} device(s) use this island. Remove anyway?{% else %}Remove island {{ island }}?{% endif %}');">
+                        <input type="hidden" name="island" value="{{ island }}">
+                        <input type="hidden" name="confirm_delete" value="true">
+                        <button type="submit" class="btn btn-danger" style="padding:0.25rem 0.6rem; font-size:0.78rem;">Remove</button>
+                    </form>
+                </div>
+                {% else %}
+                <p style="color:#bdc3c7; font-size:0.85rem;">No manually added islands yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Locations section -->
+        <div style="border-top:1px solid #eee; padding-top:1.25rem;">
+            <div style="font-size:0.85rem; font-weight:600; color:#95a5a6; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.75rem;">Locations</div>
+            <form method="POST" action="{{ url_for('add_location') }}" style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.75rem;">
+                <div style="display:flex; gap:0.5rem;">
+                    <input type="text" name="new_location" placeholder="Location name..." style="flex:2; padding:0.5rem 0.75rem; border:1px solid #ddd; border-radius:6px; font-size:0.9rem;">
+                    <select name="location_island" style="flex:1; padding:0.5rem 0.75rem; border:1px solid #ddd; border-radius:6px; font-size:0.9rem;">
+                        <option value="">No island</option>
+                        {% for island in all_islands %}
+                            <option value="{{ island }}">{{ island }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-success" style="white-space:nowrap;">Add</button>
+                </div>
+            </form>
+            <div style="display:flex; flex-direction:column; gap:0.35rem; max-height:200px; overflow-y:auto;">
+                {% for loc in saved_locations %}
+                {% set in_use = full_inventory | selectattr('location_code', 'equalto', loc.code) | list | length %}
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0.75rem; background:#f8f9fa; border-radius:6px; font-size:0.9rem;">
+                    <span>
+                        {{ loc.code }}
+                        {% if loc.island %}<small style="color:#7f8c8d;"> · {{ loc.island }}</small>{% endif %}
+                        {% if in_use > 0 %}<small style="color:#e67e22;"> ({{ in_use }})</small>{% endif %}
+                    </span>
+                    <form method="POST" action="{{ url_for('delete_location') }}" style="margin:0;"
+                          onsubmit="return confirm('{% if in_use > 0 %}{{ in_use }} device(s) use this location. Remove anyway?{% else %}Remove location {{ loc.code }}?{% endif %}');">
+                        <input type="hidden" name="location" value="{{ loc.code }}">
+                        <input type="hidden" name="confirm_delete" value="true">
+                        <button type="submit" class="btn btn-danger" style="padding:0.25rem 0.6rem; font-size:0.78rem;">Remove</button>
+                    </form>
+                </div>
+                {% else %}
+                <p style="color:#bdc3c7; font-size:0.85rem;">No manually added locations yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <button onclick="document.getElementById('locationsModal').style.display='none'" class="btn btn-secondary" style="width:100%; margin-top:1rem;">Close</button>
+    </div>
+</div>
+
+<!-- Manage Device Types Modal -->
+<div id="deviceTypesModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:10px; padding:2rem; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2); max-height:80vh; overflow-y:auto;">
+        <h3 style="margin-bottom:0.5rem; color:#2c3e50;">⚙️ Manage Device Types</h3>
+        <p style="color:#7f8c8d; margin-bottom:1.25rem; font-size:0.9rem;">Add or remove device types from the system.</p>
+
+        <!-- Add new type -->
+        <form method="POST" action="{{ url_for('add_device_type') }}" style="display:flex; gap:0.5rem; margin-bottom:1.25rem;">
+            <input type="text" name="new_type" placeholder="New device type..." style="flex:1; padding:0.5rem 0.75rem; border:1px solid #ddd; border-radius:6px; font-size:0.9rem;">
+            <button type="submit" class="btn btn-success" style="white-space:nowrap;">Add</button>
+        </form>
+
+        <!-- Existing types list -->
+        <div style="display:flex; flex-direction:column; gap:0.4rem;">
+            {% for type in saved_device_types %}
+            {% set in_use = full_inventory | selectattr('device_type', 'equalto', type) | list | length %}
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0.75rem; background:#f8f9fa; border-radius:6px; font-size:0.9rem;">
+                <span>
+                    {{ device_type_icons.get(type, '📦') }} {{ type }}
+                    {% if in_use > 0 %}
+                        <small style="color:#e67e22; margin-left:4px;">({{ in_use }} device{{ 's' if in_use != 1 }})</small>
+                    {% endif %}
+                </span>
+                <form method="POST" action="{{ url_for('delete_device_type') }}" style="margin:0;"
+                      onsubmit="return confirm('{% if in_use > 0 %}WARNING: {{ in_use }} device(s) use this type. Remove anyway?{% else %}Remove device type {{ type }}?{% endif %}');">
+                    <input type="hidden" name="type" value="{{ type }}">
+                    <input type="hidden" name="confirm_delete" value="true">
+                    <button type="submit" class="btn btn-danger" style="padding:0.25rem 0.6rem; font-size:0.78rem;">Remove</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+
+        <button onclick="document.getElementById('deviceTypesModal').style.display='none'" class="btn btn-secondary" style="width:100%; margin-top:1rem;">Close</button>
+    </div>
+</div>
+
+<!-- Archive Modal -->
+<div id="archiveModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:10px; padding:2rem; max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+        <h3 style="margin-bottom:0.5rem; color:#2c3e50;">Archive Device</h3>
+        <p id="archiveModalMsg" style="color:#7f8c8d; margin-bottom:1.5rem; font-size:0.95rem;"></p>
+        <div style="display:flex; flex-direction:column; gap:0.75rem;">
+            <form id="archiveForm" method="POST">
+                <button type="submit" class="btn" style="width:100%; background-color:#f39c12; color:white; text-align:left; padding:0.75rem 1rem;">
+                    <strong>Archive</strong><br>
+                    <small style="font-weight:normal; opacity:0.9;">Move to archived — removed from active inventory</small>
+                </button>
+            </form>
+            <form id="tbdForm" method="POST">
+                <button type="submit" class="btn" style="width:100%; background-color:#3498db; color:white; text-align:left; padding:0.75rem 1rem;">
+                    <strong>Keep Active — Set User to TBD</strong><br>
+                    <small style="font-weight:normal; opacity:0.9;">Stays in active inventory, assigned user changes to TBD</small>
+                </button>
+            </form>
+            <button onclick="closeArchiveModal()" class="btn btn-secondary" style="width:100%;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openArchiveModal(btn) {
+    const deviceId = btn.dataset.deviceId;
+    const model = btn.dataset.deviceModel;
+    document.getElementById('archiveModalMsg').textContent = 'What would you like to do with "' + model + '"?';
+    document.getElementById('archiveForm').action = '/inventory/archive/' + deviceId;
+    document.getElementById('tbdForm').action = '/inventory/mark-tbd/' + deviceId;
+    const modal = document.getElementById('archiveModal');
+    modal.style.display = 'flex';
+}
+function closeArchiveModal() {
+    document.getElementById('archiveModal').style.display = 'none';
+}
+document.getElementById('archiveModal').addEventListener('click', function(e) {
+    if (e.target === this) closeArchiveModal();
+});
+document.getElementById('exportModal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+document.getElementById('deviceTypesModal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+document.getElementById('locationsModal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+</script>
+{% endblock %}
