@@ -84,7 +84,6 @@ def urlencode_filter(s):
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')   # safe concurrent writes
     conn.execute('PRAGMA foreign_keys=ON')
     return conn
 
@@ -783,6 +782,7 @@ def add_device():
                          device_types=load_device_types(),
                          locations_by_island=_build_locations_by_island(inventory),
                          all_islands=all_islands,
+                         location_codes=LOCATION_CODES,
                          conditions=DEVICE_CONDITIONS)
 
 @app.route('/inventory/edit/<int:device_id>', methods=['GET', 'POST'])
