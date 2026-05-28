@@ -474,10 +474,25 @@ def save_islands(islands):
     finally:
         conn.close()
 
+@app.after_request
+def no_cache(response):
+    if request.endpoint != 'static':
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 @app.before_request
 def require_user():
-    allowed = {'select_user', 'add_user', 'delete_user', 'change_password', 'logout', 'static'}
-    if request.endpoint not in allowed and 'current_user' not in session:
+    allowed = {'select_user', 'logout', 'static'}
+    if request.endpoint == 'add_user' and 'current_user' not in session:
+        # Allow add_user only when no users exist yet (first-time setup)
+        conn = get_db()
+        count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+        conn.close()
+        if count > 0:
+            return redirect(url_for('select_user'))
+    elif request.endpoint not in allowed and 'current_user' not in session:
         return redirect(url_for('select_user'))
 
 @app.route('/select-user', methods=['GET', 'POST'])
@@ -521,11 +536,16 @@ def add_user():
         flash(f'"{new_name}" already exists.', 'error')
     else:
         conn = get_db()
-        conn.execute('INSERT INTO users (name, password_hash) VALUES (?, ?)',
-                     (new_name, generate_password_hash(password)))
-        conn.commit()
-        conn.close()
-        flash(f'User "{new_name}" added.', 'success')
+        try:
+            conn.execute('INSERT INTO users (name, password_hash) VALUES (?, ?)',
+                         (new_name, generate_password_hash(password)))
+            conn.commit()
+            flash(f'User "{new_name}" added.', 'success')
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            flash(f'"{new_name}" already exists.', 'error')
+        finally:
+            conn.close()
     return redirect(url_for('select_user'))
 
 @app.route('/delete-user', methods=['POST'])
@@ -539,7 +559,7 @@ def delete_user():
     conn = get_db()
     row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (name,)).fetchone()
     stored_hash = row['password_hash'] if row else ''
-    if not stored_hash or not check_password_hash(stored_hash, password):
+    if stored_hash and not check_password_hash(stored_hash, password):
         conn.close()
         flash('Incorrect password. User not removed.', 'error')
         return redirect(url_for('select_user'))

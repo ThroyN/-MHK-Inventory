@@ -149,8 +149,12 @@
         <p style="text-align:center; color:#7f8c8d; font-size:0.9rem; padding: 1rem 0;">No registered users yet. Add a user below to get started.</p>
         {% endif %}
 
-        <div class="section">
+        {% if session.current_user or not users %}
+        <div class="section" id="add-user">
             <div class="section-title">Add User</div>
+            {% if not session.current_user %}
+            <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom:0.75rem;">No users registered yet — create the first account to get started.</p>
+            {% endif %}
             <form method="POST" action="{{ url_for('add_user') }}" class="add-col">
                 <input type="text" name="new_user" placeholder="Full name...">
                 <input type="password" name="new_password" placeholder="Password...">
@@ -158,7 +162,9 @@
                 <button type="submit" class="btn btn-success">Add User</button>
             </form>
         </div>
+        {% endif %}
 
+        {% if session.current_user %}
         <div class="section">
             <div class="section-title">Manage Users</div>
             <div class="user-list">
@@ -203,6 +209,7 @@
                 {% endfor %}
             </div>
         </div>
+        {% endif %}
     </div>
     <script>
         function toggleForm(openId, closeId) {

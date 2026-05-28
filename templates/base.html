@@ -380,6 +380,7 @@
                     <span style="opacity: 0.75; font-size: 0.9rem;">👤 {{ session.current_user }}</span>
                 </li>
                 <li><a href="{{ url_for('logout') }}" style="opacity: 0.75; font-size: 0.9rem;">Switch User</a></li>
+                <li><a href="{{ url_for('select_user') }}#add-user" style="opacity: 0.75; font-size: 0.9rem;">+ Add User</a></li>
                 {% endif %}
             </ul>
         </div>
