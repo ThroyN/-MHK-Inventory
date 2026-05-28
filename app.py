@@ -539,7 +539,7 @@ def delete_user():
     conn = get_db()
     row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (name,)).fetchone()
     stored_hash = row['password_hash'] if row else ''
-    if stored_hash and not check_password_hash(stored_hash, password):
+    if not stored_hash or not check_password_hash(stored_hash, password):
         conn.close()
         flash('Incorrect password. User not removed.', 'error')
         return redirect(url_for('select_user'))
@@ -1236,9 +1236,10 @@ def undo_history(history_id):
 @app.route('/inventory/history')
 def inventory_history():
     """Display inventory change history"""
-    history = load_history()
+    all_history = load_history()
     search = request.args.get('search', '').lower()
     action_filter = request.args.get('action', '')
+    history = all_history
     if search:
         history = [e for e in history if search in e.get('model', '').lower() or
                    search in e.get('serial_number', '').lower() or
@@ -1246,7 +1247,7 @@ def inventory_history():
                    search in e.get('assigned_user', '').lower()]
     if action_filter:
         history = [e for e in history if e.get('action', '') == action_filter]
-    all_actions = sorted({e.get('action', '') for e in load_history()})
+    all_actions = sorted({e.get('action', '') for e in all_history})
     return render_template('inventory_history.html',
                            history=history,
                            all_actions=all_actions,
@@ -1331,15 +1332,14 @@ def add_ticket():
 @app.route('/tickets/view/<int:ticket_id>')
 def view_ticket(ticket_id):
     """View ticket details"""
-    tickets = load_tickets()
-    ticket = next((t for t in tickets if t['id'] == ticket_id), None)
-    
-    if not ticket:
+    conn = get_db()
+    row = conn.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    conn.close()
+    if not row:
         flash('Ticket not found.', 'error')
         return redirect(url_for('tickets_list'))
-    
     return render_template('view_ticket.html',
-                         ticket=ticket,
+                         ticket=dict(row),
                          ticket_statuses=TICKET_STATUSES)
 
 @app.route('/tickets/update/<int:ticket_id>', methods=['POST'])
@@ -1493,6 +1493,7 @@ def _xlsx_cell_str(val):
 def _process_rows(rows):
     """Import a list of dicts (with CSV_COLUMNS keys) into inventory. Returns (imported, skipped, skip_reasons)."""
     saved_types = load_device_types()
+    original_type_count = len(saved_types)
     imported, skipped = 0, 0
     skip_reasons = {}
     new_devices = []
@@ -1513,7 +1514,6 @@ def _process_rows(rows):
 
         if device_type and device_type not in saved_types:
             saved_types.append(device_type)
-            save_device_types(saved_types)
 
         condition = str(row.get('condition', '')).strip()
         if condition not in DEVICE_CONDITIONS:
@@ -1535,6 +1535,9 @@ def _process_rows(rows):
             'added_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
         })
         imported += 1
+
+    if len(saved_types) > original_type_count:
+        save_device_types(saved_types)
 
     if new_devices:
         conn = get_db()
