@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Inventory & Ticket Management{% endblock %}</title>
+    <title>{% block title %}MHK Inventory{% endblock %}</title>
     <style>
         * {
             margin: 0;
@@ -332,6 +332,18 @@
             color: #e74c3c;
         }
 
+        .navbar-info {
+            max-width: 1200px;
+            margin: 0.4rem auto 0;
+            padding-top: 0.4rem;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            gap: 2rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            opacity: 0.95;
+        }
+
         @media (max-width: 768px) {
             .navbar-content {
                 flex-direction: column;
@@ -357,7 +369,7 @@
 <body>
     <nav class="navbar">
         <div class="navbar-content">
-            <h1>📦 IT Management System</h1>
+            <h1>📦 MHK Inventory</h1>
             <ul class="nav-links">
                 <li><a href="{{ url_for('index') }}">Dashboard</a></li>
                 <li><a href="{{ url_for('inventory_list') }}">Inventory</a></li>
@@ -370,6 +382,10 @@
                 <li><a href="{{ url_for('logout') }}" style="opacity: 0.75; font-size: 0.9rem;">Switch User</a></li>
                 {% endif %}
             </ul>
+        </div>
+        <div class="navbar-info">
+            <span>🕐 <span id="hst-clock">—</span></span>
+            <span>💾 Next backup in <span id="backup-countdown">—</span></span>
         </div>
     </nav>
 
@@ -389,5 +405,35 @@
         {% block content %}{% endblock %}
     </div>
     {% block scripts %}{% endblock %}
+    <script>
+        function updateClock() {
+            var now = new Date();
+
+            // Hawaii time display (Pacific/Honolulu = UTC-10, no DST)
+            var hawaiiStr = now.toLocaleString('en-US', {
+                timeZone: 'Pacific/Honolulu',
+                weekday: 'short', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+                hour12: true
+            });
+            document.getElementById('hst-clock').textContent = hawaiiStr + ' HST';
+
+            // Countdown to next 2:00 AM HST
+            // Hawaii is always UTC-10
+            var hawaiiMs = now.getTime() - (10 * 3600 * 1000);
+            var dayMs = ((hawaiiMs % 86400000) + 86400000) % 86400000;
+            var targetMs = 2 * 3600 * 1000; // 2:00 AM
+            var diffMs = targetMs - dayMs;
+            if (diffMs <= 0) diffMs += 86400000;
+
+            var h = Math.floor(diffMs / 3600000);
+            var m = Math.floor((diffMs % 3600000) / 60000);
+            document.getElementById('backup-countdown').textContent =
+                String(h).padStart(2,'0') + 'h ' +
+                String(m).padStart(2,'0') + 'm';
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+    </script>
 </body>
 </html>

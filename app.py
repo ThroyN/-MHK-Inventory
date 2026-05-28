@@ -663,6 +663,10 @@ def add_island():
     else:
         islands.append(name)
         save_islands(islands)
+        log_history('Island Added', {
+            'id': None, 'device_type': '', 'model': f'Island "{name}"',
+            'serial_number': '', 'location_code': '', 'island': name, 'assigned_user': ''
+        })
         flash(f'Island "{name}" added.', 'success')
     return redirect(url_for('inventory_list'))
 
@@ -681,6 +685,10 @@ def delete_island():
             return redirect(url_for('inventory_list'))
         islands.remove(name)
         save_islands(islands)
+        log_history('Island Deleted', {
+            'id': None, 'device_type': '', 'model': f'Island "{name}"',
+            'serial_number': '', 'location_code': '', 'island': name, 'assigned_user': ''
+        })
         flash(f'Island "{name}" removed.', 'success')
     else:
         flash('Island not found.', 'error')
@@ -738,6 +746,10 @@ def add_device_type():
     else:
         types.append(new_type)
         save_device_types(types)
+        log_history('Device Type Added', {
+            'id': None, 'device_type': new_type, 'model': f'Device type "{new_type}"',
+            'serial_number': '', 'location_code': '', 'island': '', 'assigned_user': ''
+        })
         flash(f'Device type "{new_type}" added.', 'success')
     return redirect(url_for('inventory_list'))
 
@@ -756,6 +768,10 @@ def delete_device_type():
             return redirect(url_for('inventory_list') + '#deviceTypesModal')
         types.remove(name)
         save_device_types(types)
+        log_history('Device Type Deleted', {
+            'id': None, 'device_type': name, 'model': f'Device type "{name}"',
+            'serial_number': '', 'location_code': '', 'island': '', 'assigned_user': ''
+        })
         flash(f'Device type "{name}" removed.', 'success')
     else:
         flash('Device type not found.', 'error')
