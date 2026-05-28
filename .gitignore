@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+data/inventory.db
+data/*.json
+data/.secret_key
+.claude/

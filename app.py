@@ -12,13 +12,24 @@ import tempfile
 import openpyxl
 from openpyxl.styles import Font
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
-
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 DB_FILE  = os.path.join(DATA_DIR, 'inventory.db')
+
+def _get_or_create_secret_key():
+    key_file = os.path.join(DATA_DIR, '.secret_key')
+    if os.path.exists(key_file):
+        with open(key_file, 'rb') as f:
+            return f.read()
+    os.makedirs(DATA_DIR, exist_ok=True)
+    key = os.urandom(32)
+    with open(key_file, 'wb') as f:
+        f.write(key)
+    return key
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY') or _get_or_create_secret_key()
 
 # Legacy JSON paths — kept only for one-time migration on first run
 INVENTORY_FILE    = os.path.join(DATA_DIR, 'inventory.json')
@@ -85,8 +96,19 @@ def urlencode_filter(s):
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')
     conn.execute('PRAGMA foreign_keys=ON')
     return conn
+
+def _get_device(device_id):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM inventory WHERE id = ?', (device_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    d['archived'] = bool(d.get('archived', 0))
+    return d
 
 def init_db():
     """Create all tables if they don't exist."""
@@ -618,7 +640,7 @@ def index():
         tickets_by_category[category] = tickets_by_category.get(category, 0) + 1
 
     # Recent tickets (last 5)
-    recent_tickets = sorted(tickets, key=lambda x: x.get('created_at', ''), reverse=True)[:5]
+    recent_tickets = sorted(tickets, key=lambda x: _parse_ts(x.get('created_at', '')), reverse=True)[:5]
 
     return render_template('index.html',
                          total_devices=total_devices,
@@ -821,12 +843,9 @@ def add_device():
         if not all([device_type, model, serial_number, location_code]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('add_device'))
-        
-        # Create new device
-        inventory = load_inventory()
-        
+
+        now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         new_device = {
-            'id': generate_id(inventory),
             'device_type': device_type,
             'model': model,
             'serial_number': serial_number,
@@ -838,14 +857,25 @@ def add_device():
             'island': _island_for_location(location_code),
             'phone': request.form.get('phone', ''),
             'notes': request.form.get('notes', ''),
-            'archived': False,
-            'added_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
+            'added_at': now,
             'updated_at': '',
             'source': 'added'
         }
-
-        inventory.append(new_device)
-        save_inventory(inventory)
+        conn = get_db()
+        conn.execute('''INSERT INTO inventory
+            (device_type, model, serial_number, assigned_user, password,
+             purchase_date, condition, location_code, island, phone, notes,
+             archived, added_at, updated_at, source)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)''', (
+            new_device['device_type'], new_device['model'], new_device['serial_number'],
+            new_device['assigned_user'], new_device['password'], new_device['purchase_date'],
+            new_device['condition'], new_device['location_code'], new_device['island'],
+            new_device['phone'], new_device['notes'],
+            new_device['added_at'], new_device['updated_at'], new_device['source']
+        ))
+        new_device['id'] = conn.lastrowid
+        conn.commit()
+        conn.close()
         log_history('Added', new_device)
         flash(f'Device {model} added successfully!', 'success')
         return redirect(url_for('inventory_list'))
@@ -862,46 +892,54 @@ def add_device():
 @app.route('/inventory/edit/<int:device_id>', methods=['GET', 'POST'])
 def edit_device(device_id):
     """Edit an existing device"""
-    inventory = load_inventory()
-    device = next((item for item in inventory if item['id'] == device_id), None)
-    
+    device = _get_device(device_id)
     if not device:
         flash('Device not found.', 'error')
         return redirect(url_for('inventory_list'))
-    
+
     if request.method == 'POST':
         if not all([request.form.get('device_type'), request.form.get('model'),
                     request.form.get('serial_number'), request.form.get('location_code')]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('edit_device', device_id=device_id))
-        # Track changes for history
         track_fields = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'location_code', 'phone', 'purchase_date', 'condition', 'notes']
         changes = {f: {'from': device.get(f, ''), 'to': request.form.get(f, device.get(f, ''))} for f in track_fields if str(device.get(f, '')) != str(request.form.get(f, device.get(f, '')))}
-        # Island is auto-derived — track separately since it has no form field
         old_island = device.get('island', '')
         new_island = _island_for_location(request.form.get('location_code', ''))
         if old_island != new_island:
             changes['island'] = {'from': old_island, 'to': new_island}
-        # Update device
-        device['device_type'] = request.form.get('device_type')
-        device['model'] = request.form.get('model')
-        device['serial_number'] = request.form.get('serial_number')
-        device['assigned_user'] = request.form.get('assigned_user', '')
-        device['password'] = request.form.get('password', '')
-        device['purchase_date'] = _normalize_date(request.form.get('purchase_date', ''))
         condition = request.form.get('condition', 'Good')
-        device['condition'] = condition if condition in DEVICE_CONDITIONS else 'Good'
-        device['location_code'] = request.form.get('location_code')
-        device['island'] = _island_for_location(request.form.get('location_code', ''))
-        device['phone'] = request.form.get('phone', '')
-        device['notes'] = request.form.get('notes', '')
-        device['updated_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-        
-        save_inventory(inventory)
+        device.update({
+            'device_type': request.form.get('device_type'),
+            'model': request.form.get('model'),
+            'serial_number': request.form.get('serial_number'),
+            'assigned_user': request.form.get('assigned_user', ''),
+            'password': request.form.get('password', ''),
+            'purchase_date': _normalize_date(request.form.get('purchase_date', '')),
+            'condition': condition if condition in DEVICE_CONDITIONS else 'Good',
+            'location_code': request.form.get('location_code'),
+            'island': new_island,
+            'phone': request.form.get('phone', ''),
+            'notes': request.form.get('notes', ''),
+            'updated_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
+        })
+        conn = get_db()
+        conn.execute('''UPDATE inventory SET
+            device_type=?, model=?, serial_number=?, assigned_user=?, password=?,
+            purchase_date=?, condition=?, location_code=?, island=?, phone=?, notes=?,
+            updated_at=? WHERE id=?''', (
+            device['device_type'], device['model'], device['serial_number'],
+            device['assigned_user'], device['password'], device['purchase_date'],
+            device['condition'], device['location_code'], device['island'],
+            device['phone'], device['notes'], device['updated_at'], device_id
+        ))
+        conn.commit()
+        conn.close()
         log_history('Edited', device, changes)
         flash(f'Device {device["model"]} updated successfully!', 'success')
         return redirect(url_for('inventory_list'))
-    
+
+    inventory = load_inventory()
     all_islands = _get_all_islands(inventory)
     device['location_name'] = LOCATION_CODES.get(device.get('location_code', ''), device.get('location_code', 'Unknown'))
     return render_template('edit_device.html',
@@ -915,25 +953,28 @@ def edit_device(device_id):
 @app.route('/inventory/delete/<int:device_id>', methods=['POST'])
 def delete_device(device_id):
     """Delete a device from inventory"""
-    inventory = load_inventory()
-    device = next((item for item in inventory if item['id'] == device_id), None)
+    device = _get_device(device_id)
     if device:
         log_history('Deleted', device)
-    inventory = [item for item in inventory if item['id'] != device_id]
-    save_inventory(inventory)
-
+    conn = get_db()
+    conn.execute('DELETE FROM inventory WHERE id=?', (device_id,))
+    conn.commit()
+    conn.close()
     flash('Device deleted successfully!', 'success')
     return redirect(url_for('inventory_list'))
 
 @app.route('/inventory/archive/<int:device_id>', methods=['POST'])
 def archive_device(device_id):
     """Archive a device (mark as predecessor/retired)"""
-    inventory = load_inventory()
-    device = next((item for item in inventory if item['id'] == device_id), None)
+    device = _get_device(device_id)
     if device:
+        now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
+        conn = get_db()
+        conn.execute('UPDATE inventory SET archived=1, archived_at=? WHERE id=?', (now, device_id))
+        conn.commit()
+        conn.close()
         device['archived'] = True
-        device['archived_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-        save_inventory(inventory)
+        device['archived_at'] = now
         log_history('Archived', device)
         flash(f'Device {device["model"]} archived.', 'success')
     else:
@@ -943,27 +984,42 @@ def archive_device(device_id):
 @app.route('/inventory/mark-tbd/<int:device_id>', methods=['POST'])
 def mark_tbd(device_id):
     """Keep device active but set assigned user to TBD"""
-    inventory = load_inventory()
-    device = next((item for item in inventory if item['id'] == device_id), None)
+    device = _get_device(device_id)
     if device:
-        # Archive the original to preserve history
+        now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
+        conn = get_db()
+        try:
+            conn.execute('BEGIN')
+            conn.execute('UPDATE inventory SET archived=1, archived_at=? WHERE id=?', (now, device_id))
+            conn.execute('''INSERT INTO inventory
+                (device_type, model, serial_number, assigned_user, password,
+                 purchase_date, condition, location_code, island, phone, notes,
+                 archived, added_at, updated_at, source)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)''', (
+                device['device_type'], device['model'], device['serial_number'],
+                'TBD', 'TBD', device['purchase_date'], device['condition'],
+                device['location_code'], device['island'], 'TBD', device['notes'],
+                now, '', device.get('source', 'added')
+            ))
+            new_id = conn.lastrowid
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         device['archived'] = True
-        device['archived_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-
-        # Create a fresh active copy with TBD fields
-        new_device = copy.deepcopy(device)
-        new_device['id'] = generate_id(inventory)
+        device['archived_at'] = now
+        log_history('Archived (TBD copy created)', device)
+        new_device = dict(device)
+        new_device['id'] = new_id
         new_device['assigned_user'] = 'TBD'
         new_device['password'] = 'TBD'
         new_device['phone'] = 'TBD'
         new_device['archived'] = False
         new_device.pop('archived_at', None)
-        new_device['added_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-        new_device.pop('updated_at', None)
-
-        inventory.append(new_device)
-        save_inventory(inventory)
-        log_history('Archived (TBD copy created)', device)
+        new_device['added_at'] = now
+        new_device['updated_at'] = ''
         log_history('Added (TBD copy)', new_device)
         flash(f'Original {device["model"]} archived. Active copy created with TBD fields.', 'success')
     else:
@@ -973,12 +1029,14 @@ def mark_tbd(device_id):
 @app.route('/inventory/unarchive/<int:device_id>', methods=['POST'])
 def unarchive_device(device_id):
     """Restore an archived device to active inventory"""
-    inventory = load_inventory()
-    device = next((item for item in inventory if item['id'] == device_id), None)
+    device = _get_device(device_id)
     if device:
+        conn = get_db()
+        conn.execute('UPDATE inventory SET archived=0, archived_at=? WHERE id=?', ('', device_id))
+        conn.commit()
+        conn.close()
         device['archived'] = False
         device.pop('archived_at', None)
-        save_inventory(inventory)
         log_history('Restored', device)
         flash(f'Device {device["model"]} restored to active inventory.', 'success')
     else:
@@ -987,148 +1045,168 @@ def unarchive_device(device_id):
 
 @app.route('/inventory/history/undo/<int:history_id>', methods=['POST'])
 def undo_history(history_id):
-    history = load_history()
-    inventory = load_inventory()
-    entry = next((e for e in history if e['id'] == history_id), None)
-
-    if not entry:
+    conn = get_db()
+    row = conn.execute('SELECT * FROM history WHERE id=?', (history_id,)).fetchone()
+    conn.close()
+    if not row:
         flash('History entry not found.', 'error')
         return redirect(url_for('inventory_history'))
 
+    entry = dict(row)
+    entry['changes'] = json.loads(entry.get('changes') or '{}')
+    entry['device_snapshot'] = json.loads(entry.get('device_snapshot') or '{}')
+
     action = entry.get('action', '')
-    snapshot = entry.get('device_snapshot', {})
     device_id = entry.get('device_id')
-    undone_by = session.get('current_user', 'Unknown')
 
     # --- TBD pair: undo both archive + TBD copy together ---
     if action in ('Archived (TBD copy created)', 'Added (TBD copy)'):
-        ts = entry.get('timestamp')
-        user = entry.get('performed_by')
-        pair = [e for e in history if e.get('timestamp') == ts and
-                e.get('performed_by') == user and
-                e.get('action') in ('Archived (TBD copy created)', 'Added (TBD copy)')]
+        conn = get_db()
+        pair_rows = conn.execute(
+            '''SELECT * FROM history WHERE timestamp=? AND performed_by=?
+               AND action IN ('Archived (TBD copy created)', 'Added (TBD copy)')''',
+            (entry.get('timestamp'), entry.get('performed_by'))
+        ).fetchall()
+        conn.close()
+        pair = []
+        for r in pair_rows:
+            d = dict(r)
+            d['changes'] = json.loads(d.get('changes') or '{}')
+            d['device_snapshot'] = json.loads(d.get('device_snapshot') or '{}')
+            pair.append(d)
 
         archive_entry = next((e for e in pair if e['action'] == 'Archived (TBD copy created)'), None)
         tbd_entry     = next((e for e in pair if e['action'] == 'Added (TBD copy)'), None)
 
         if archive_entry and tbd_entry:
-            # Restore the original (un-archive it)
-            original = next((d for d in inventory if d['id'] == archive_entry['device_id']), None)
-            if original:
-                original['archived'] = False
-                original.pop('archived_at', None)
-            # Delete the TBD copy
-            inventory = [d for d in inventory if d['id'] != tbd_entry['device_id']]
-            save_inventory(inventory)
-            # Remove both history entries and log the undo
-            history = [e for e in history if e['id'] not in (archive_entry['id'], tbd_entry['id'])]
-            undo_entry = {
-                'id': generate_id(history),
-                'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-                'performed_by': undone_by,
-                'action': 'Undone: Archive+TBD',
-                'device_id': archive_entry['device_id'],
+            conn = get_db()
+            try:
+                conn.execute('BEGIN')
+                conn.execute('UPDATE inventory SET archived=0, archived_at=? WHERE id=?',
+                             ('', archive_entry['device_id']))
+                conn.execute('DELETE FROM inventory WHERE id=?', (tbd_entry['device_id'],))
+                conn.execute('DELETE FROM history WHERE id IN (?,?)',
+                             (archive_entry['id'], tbd_entry['id']))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+            log_history('Undone: Archive+TBD', {
+                'id': archive_entry['device_id'],
                 'device_type': archive_entry.get('device_type', ''),
                 'model': archive_entry.get('model', ''),
                 'serial_number': archive_entry.get('serial_number', ''),
                 'location_code': archive_entry.get('location_code', ''),
                 'island': archive_entry.get('island', ''),
                 'assigned_user': archive_entry.get('assigned_user', ''),
-                'changes': {},
-                'device_snapshot': {}
-            }
-            history.insert(0, undo_entry)
-            save_history(history)
+            })
             flash(f'Undone: archive and TBD copy for {archive_entry.get("model")} reversed.', 'success')
         else:
             flash('Could not find matching TBD pair to undo.', 'error')
 
     # --- Added: delete the device ---
     elif action == 'Added':
-        inventory = [d for d in inventory if d['id'] != device_id]
-        save_inventory(inventory)
-        history = [e for e in history if e['id'] != history_id]
-        history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-            'performed_by': undone_by, 'action': f'Undone: Added',
-            'device_id': device_id, 'device_type': entry.get('device_type',''), 'model': entry.get('model',''),
-            'serial_number': entry.get('serial_number',''), 'location_code': entry.get('location_code',''),
-            'island': entry.get('island',''), 'assigned_user': entry.get('assigned_user',''),
-            'changes': {}, 'device_snapshot': {}})
-        save_history(history)
+        conn = get_db()
+        conn.execute('DELETE FROM inventory WHERE id=?', (device_id,))
+        conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+        conn.commit()
+        conn.close()
+        log_history('Undone: Added', {
+            'id': device_id, 'device_type': entry.get('device_type', ''),
+            'model': entry.get('model', ''), 'serial_number': entry.get('serial_number', ''),
+            'location_code': entry.get('location_code', ''), 'island': entry.get('island', ''),
+            'assigned_user': entry.get('assigned_user', ''),
+        })
         flash(f'Undone: removed added device {entry.get("model")}.', 'success')
 
     # --- Edited: revert fields to their previous values ---
     elif action == 'Edited':
-        device = next((d for d in inventory if d['id'] == device_id), None)
-        if device and entry.get('changes'):
-            for field, diff in entry['changes'].items():
-                if 'from' in diff:
-                    device[field] = diff['from']
-            save_inventory(inventory)
-            history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-                'performed_by': undone_by, 'action': 'Undone: Edited',
-                'device_id': device_id, 'device_type': device.get('device_type',''), 'model': device.get('model',''),
-                'serial_number': device.get('serial_number',''), 'location_code': device.get('location_code',''),
-                'island': device.get('island',''), 'assigned_user': device.get('assigned_user',''),
-                'changes': {}, 'device_snapshot': {}})
-            save_history(history)
+        changes = entry.get('changes', {})
+        if device_id and changes:
+            EDITABLE = {'device_type', 'model', 'serial_number', 'assigned_user', 'password',
+                        'location_code', 'phone', 'purchase_date', 'condition', 'notes', 'island'}
+            set_parts, values = [], []
+            for field, diff in changes.items():
+                if field in EDITABLE and 'from' in diff:
+                    set_parts.append(f'{field} = ?')
+                    values.append(diff['from'])
+            conn = get_db()
+            if set_parts:
+                values.append(device_id)
+                conn.execute(f'UPDATE inventory SET {", ".join(set_parts)} WHERE id=?', values)
+            conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+            conn.commit()
+            conn.close()
+            device = _get_device(device_id)
+            log_history('Undone: Edited', device or {'id': device_id, 'model': entry.get('model', '')})
             flash(f'Undone: reverted edit on {entry.get("model")}.', 'success')
         else:
             flash('No changes to revert or device not found.', 'error')
 
     # --- Deleted: restore from snapshot ---
     elif action == 'Deleted':
+        snapshot = entry.get('device_snapshot', {})
         if snapshot:
-            snapshot['id'] = generate_id(inventory)
-            snapshot['archived'] = False
-            inventory.append(snapshot)
-            save_inventory(inventory)
-            history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-                'performed_by': undone_by, 'action': 'Undone: Deleted',
-                'device_id': snapshot['id'], 'device_type': snapshot.get('device_type',''), 'model': snapshot.get('model',''),
-                'serial_number': snapshot.get('serial_number',''), 'location_code': snapshot.get('location_code',''),
-                'island': snapshot.get('island',''), 'assigned_user': snapshot.get('assigned_user',''),
-                'changes': {}, 'device_snapshot': {}})
-            save_history(history)
+            conn = get_db()
+            try:
+                conn.execute('BEGIN')
+                conn.execute('''INSERT INTO inventory
+                    (device_type, model, serial_number, assigned_user, password,
+                     purchase_date, condition, location_code, island, phone, notes,
+                     archived, archived_at, added_at, updated_at, source)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)''', (
+                    snapshot.get('device_type', ''), snapshot.get('model', ''),
+                    snapshot.get('serial_number', ''), snapshot.get('assigned_user', ''),
+                    snapshot.get('password', ''), snapshot.get('purchase_date', ''),
+                    snapshot.get('condition', 'Good'), snapshot.get('location_code', ''),
+                    snapshot.get('island', ''), snapshot.get('phone', ''), snapshot.get('notes', ''),
+                    snapshot.get('archived_at', ''), snapshot.get('added_at', ''),
+                    snapshot.get('updated_at', ''), snapshot.get('source', 'added')
+                ))
+                new_id = conn.lastrowid
+                conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+            snapshot['id'] = new_id
+            log_history('Undone: Deleted', snapshot)
             flash(f'Undone: restored deleted device {entry.get("model")}.', 'success')
         else:
             flash('No snapshot available — this entry was created before undo support was added.', 'error')
 
     # --- Archived: restore to active ---
     elif action == 'Archived':
-        device = next((d for d in inventory if d['id'] == device_id), None)
+        device = _get_device(device_id)
         if device:
+            conn = get_db()
+            conn.execute('UPDATE inventory SET archived=0, archived_at=? WHERE id=?', ('', device_id))
+            conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+            conn.commit()
+            conn.close()
             device['archived'] = False
-            device.pop('archived_at', None)
-            save_inventory(inventory)
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-                'performed_by': undone_by, 'action': 'Undone: Archived',
-                'device_id': device_id, 'device_type': entry.get('device_type',''), 'model': entry.get('model',''),
-                'serial_number': entry.get('serial_number',''), 'location_code': entry.get('location_code',''),
-                'island': entry.get('island',''), 'assigned_user': entry.get('assigned_user',''),
-                'changes': {}, 'device_snapshot': {}})
-            save_history(history)
+            log_history('Undone: Archived', device)
             flash(f'Undone: {entry.get("model")} restored to active inventory.', 'success')
         else:
             flash('Device not found in inventory.', 'error')
 
     # --- Restored: re-archive ---
     elif action == 'Restored':
-        device = next((d for d in inventory if d['id'] == device_id), None)
+        device = _get_device(device_id)
         if device:
+            now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
+            conn = get_db()
+            conn.execute('UPDATE inventory SET archived=1, archived_at=? WHERE id=?', (now, device_id))
+            conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+            conn.commit()
+            conn.close()
             device['archived'] = True
-            device['archived_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-            save_inventory(inventory)
-            history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-                'performed_by': undone_by, 'action': 'Undone: Restored',
-                'device_id': device_id, 'device_type': entry.get('device_type',''), 'model': entry.get('model',''),
-                'serial_number': entry.get('serial_number',''), 'location_code': entry.get('location_code',''),
-                'island': entry.get('island',''), 'assigned_user': entry.get('assigned_user',''),
-                'changes': {}, 'device_snapshot': {}})
-            save_history(history)
+            device['archived_at'] = now
+            log_history('Undone: Restored', device)
             flash(f'Undone: {entry.get("model")} re-archived.', 'success')
         else:
             flash('Device not found.', 'error')
@@ -1191,7 +1269,7 @@ def tickets_list():
         filtered_tickets = [ticket for ticket in filtered_tickets if ticket.get('priority') == priority]
     
     # Sort by created date (newest first)
-    filtered_tickets = sorted(filtered_tickets, key=lambda x: x.get('created_at', ''), reverse=True)
+    filtered_tickets = sorted(filtered_tickets, key=lambda x: _parse_ts(x.get('created_at', '')), reverse=True)
     
     return render_template('tickets.html',
                          tickets=filtered_tickets,
@@ -1215,26 +1293,19 @@ def add_ticket():
         if not all([title, category, submitted_by]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('add_ticket'))
-        
-        # Create new ticket
-        tickets = load_tickets()
-        
-        new_ticket = {
-            'id': generate_id(tickets),
-            'title': title,
-            'description': request.form.get('description', ''),
-            'category': category,
-            'priority': request.form.get('priority', 'Medium'),
-            'status': 'Open',
-            'submitted_by': submitted_by,
-            'created_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-            'updated_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-        }
-        
-        tickets.append(new_ticket)
-        save_tickets(tickets)
-        
-        flash(f'Ticket #{new_ticket["id"]} created successfully!', 'success')
+
+        now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
+        conn = get_db()
+        conn.execute('''INSERT INTO tickets
+            (title, description, category, priority, status, submitted_by, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?)''', (
+            title, request.form.get('description', ''), category,
+            request.form.get('priority', 'Medium'), 'Open', submitted_by, now, now
+        ))
+        ticket_id = conn.lastrowid
+        conn.commit()
+        conn.close()
+        flash(f'Ticket #{ticket_id} created successfully!', 'success')
         return redirect(url_for('tickets_list'))
     
     return render_template('add_ticket.html',
@@ -1258,34 +1329,38 @@ def view_ticket(ticket_id):
 @app.route('/tickets/update/<int:ticket_id>', methods=['POST'])
 def update_ticket_status(ticket_id):
     """Update ticket status"""
-    tickets = load_tickets()
-    ticket = next((t for t in tickets if t['id'] == ticket_id), None)
-    
-    if ticket:
-        new_status = request.form.get('status', '').strip()
-        if new_status not in TICKET_STATUSES:
-            flash('Invalid status value.', 'error')
-            return redirect(url_for('view_ticket', ticket_id=ticket_id))
-        ticket['status'] = new_status
-        ticket['updated_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-        save_tickets(tickets)
+    new_status = request.form.get('status', '').strip()
+    if new_status not in TICKET_STATUSES:
+        flash('Invalid status value.', 'error')
+        return redirect(url_for('view_ticket', ticket_id=ticket_id))
+    conn = get_db()
+    result = conn.execute('UPDATE tickets SET status=?, updated_at=? WHERE id=?',
+                          (new_status, datetime.now().strftime('%m-%d-%Y %H:%M:%S'), ticket_id))
+    conn.commit()
+    conn.close()
+    if result.rowcount:
         flash(f'Ticket #{ticket_id} status updated to {new_status}!', 'success')
     else:
         flash('Ticket not found.', 'error')
-    
     return redirect(url_for('view_ticket', ticket_id=ticket_id))
 
 @app.route('/tickets/delete/<int:ticket_id>', methods=['POST'])
 def delete_ticket(ticket_id):
     """Delete a ticket"""
-    tickets = load_tickets()
-    tickets = [t for t in tickets if t['id'] != ticket_id]
-    save_tickets(tickets)
-    
+    conn = get_db()
+    conn.execute('DELETE FROM tickets WHERE id=?', (ticket_id,))
+    conn.commit()
+    conn.close()
     flash('Ticket deleted successfully!', 'success')
     return redirect(url_for('tickets_list'))
 
 CSV_COLUMNS = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'purchase_date', 'condition', 'location_code', 'island', 'phone', 'notes']
+
+def _parse_ts(ts):
+    try:
+        return datetime.strptime(ts, '%m-%d-%Y %H:%M:%S')
+    except (ValueError, TypeError):
+        return datetime.min
 
 def _normalize_date(date_str):
     """Parse common date formats and return MM-DD-YYYY. Returns original string if unparseable."""
@@ -1401,10 +1476,10 @@ def _xlsx_cell_str(val):
 
 def _process_rows(rows):
     """Import a list of dicts (with CSV_COLUMNS keys) into inventory. Returns (imported, skipped, skip_reasons)."""
-    inventory = load_inventory()
     saved_types = load_device_types()
     imported, skipped = 0, 0
     skip_reasons = {}
+    new_devices = []
 
     for row in rows:
         missing = [f for f in CSV_REQUIRED if not str(row.get(f, '')).strip()]
@@ -1414,14 +1489,12 @@ def _process_rows(rows):
             skipped += 1
             continue
 
-        # Normalize device type: check saved types first, then aliases, then import as-is
         device_type = str(row.get('device_type', '')).strip()
         matched_type = next((dt for dt in saved_types if dt.lower() == device_type.lower()), None)
         if not matched_type:
             matched_type = DEVICE_TYPE_ALIASES.get(device_type.lower())
-        device_type = matched_type or device_type  # fall back to raw value
+        device_type = matched_type or device_type
 
-        # If the resolved type isn't in saved types, add it automatically
         if device_type and device_type not in saved_types:
             saved_types.append(device_type)
             save_device_types(saved_types)
@@ -1430,8 +1503,7 @@ def _process_rows(rows):
         if condition not in DEVICE_CONDITIONS:
             condition = 'Good'
 
-        new_device = {
-            'id': generate_id(inventory),
+        new_devices.append({
             'device_type': device_type,
             'model': str(row.get('model', '')).strip() or '-',
             'serial_number': str(row.get('serial_number', '')).strip() or 'n/a',
@@ -1444,15 +1516,31 @@ def _process_rows(rows):
             'island': str(row.get('island', '')).strip() or _island_for_location(str(row.get('location_code', '')).strip()),
             'phone': str(row.get('phone', '')).strip(),
             'notes': str(row.get('notes', '')).strip(),
-            'archived': False,
             'added_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
-            'updated_at': '',
-            'source': 'imported'
-        }
-        inventory.append(new_device)
+        })
         imported += 1
 
-    save_inventory(inventory)
+    if new_devices:
+        conn = get_db()
+        try:
+            conn.execute('BEGIN')
+            for d in new_devices:
+                conn.execute('''INSERT INTO inventory
+                    (device_type, model, serial_number, assigned_user, password,
+                     purchase_date, condition, location_code, island, phone, notes,
+                     archived, added_at, updated_at, source)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)''', (
+                    d['device_type'], d['model'], d['serial_number'], d['assigned_user'],
+                    d['password'], d['purchase_date'], d['condition'], d['location_code'],
+                    d['island'], d['phone'], d['notes'], d['added_at'], '', 'imported'
+                ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     return imported, skipped, skip_reasons
 
 
@@ -1658,5 +1746,5 @@ def export_inventory():
 
 if __name__ == '__main__':
     init_data_storage()
-    app.run(debug=True, host='0.0.0.0', port=5002)
+    app.run(debug=True, host='0.0.0.0', port=5001)
 
