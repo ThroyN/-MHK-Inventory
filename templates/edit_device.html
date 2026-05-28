@@ -40,19 +40,6 @@
             </div>
 
             <div class="form-group">
-                <label>Island</label>
-                <select name="island">
-                    <option value="">Select island...</option>
-                    {% for island in all_islands %}
-                        <option value="{{ island }}" {% if island == device.island %}selected{% endif %}>{{ island }}</option>
-                    {% endfor %}
-                    {% if device.island and device.island not in all_islands %}
-                        <option value="{{ device.island }}" selected>{{ device.island }} (current)</option>
-                    {% endif %}
-                </select>
-            </div>
-
-            <div class="form-group">
                 <label>Location Code <span class="required">*</span></label>
                 <select name="location_code" required>
                     <option value="">Select location...</option>

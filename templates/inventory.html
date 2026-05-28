@@ -58,6 +58,72 @@
         letter-spacing: 0.03em;
         margin-bottom: 2px;
     }
+
+    /* Sortable column headers */
+    .sortable-th { cursor: pointer; user-select: none; position: relative; white-space: nowrap; }
+    .sort-caret { color: #bdc3c7; font-size: 0.68rem; margin-left: 4px; vertical-align: middle; }
+    .sortable-th:hover .sort-caret { color: #7f8c8d; }
+    .sort-ind { color: #3498db; font-size: 0.78rem; margin-left: 2px; font-weight: 700; }
+    .sort-drop {
+        display: none; position: absolute; top: 100%; left: 0;
+        background: white; border: 1px solid #dde; border-radius: 7px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.13); z-index: 300;
+        min-width: 130px; overflow: hidden; margin-top: 3px;
+    }
+    .sort-drop.open { display: block; }
+    .sort-drop button {
+        display: block; width: 100%; text-align: left;
+        padding: 0.5rem 0.85rem; background: none; border: none;
+        cursor: pointer; font-size: 0.85rem; color: #2c3e50; white-space: nowrap;
+    }
+    .sort-drop button:hover { background: #f0f4f8; color: #2980b9; }
+
+    /* Searchable filter combo boxes */
+    .srch-wrap { position: relative; }
+    .srch-wrap input[type="text"] {
+        width: 100%; padding: 0.55rem 1.8rem 0.55rem 0.75rem;
+        border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem;
+        color: #2c3e50; background: white; box-sizing: border-box;
+    }
+    .srch-wrap input[type="text"]:focus { outline: none; border-color: #3498db; }
+    .srch-clear, .srch-caret {
+        position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+        background: none; border: none; cursor: pointer; padding: 0; line-height: 1;
+    }
+    .srch-clear { color: #aaa; font-size: 1rem; }
+    .srch-clear:hover { color: #e74c3c; }
+    .srch-caret { color: #95a5a6; font-size: 0.78rem; }
+    .srch-caret:hover { color: #2c3e50; }
+    .srch-drop {
+        display: none; position: absolute; top: calc(100% + 3px); left: 0;
+        background: white; border: 1px solid #dde; border-radius: 7px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.13); z-index: 400;
+        min-width: 280px; max-height: 400px; overflow-y: auto;
+    }
+    .srch-drop.open { display: block; }
+    .srch-group {
+        padding: 0.45rem 0.85rem; font-size: 0.8rem; font-weight: 800;
+        color: #2c3e50; text-transform: uppercase; letter-spacing: 0.06em;
+        background: #f0f4f8; border-top: 2px solid #d5dde8; margin-top: 2px;
+    }
+    .srch-group:first-child { border-top: none; margin-top: 0; }
+    .srch-item { padding: 0.5rem 1.2rem; cursor: pointer; font-size: 0.92rem; color: #2c3e50; }
+    .srch-item:hover, .srch-item.srch-active { background: #f0f4f8; color: #2980b9; }
+    .srch-none { padding: 0.7rem 1rem; color: #aaa; font-size: 0.88rem; }
+
+    /* Active filter chips */
+    .active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-bottom: 1rem; }
+    .active-filters-label { font-size: 0.8rem; color: #95a5a6; font-weight: 600; white-space: nowrap; }
+    .filter-chip {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        background: #e8f4fd; color: #2980b9; border: 1px solid #bee3f8;
+        border-radius: 20px; padding: 0.22rem 0.7rem; font-size: 0.8rem;
+        font-weight: 600; text-decoration: none; transition: background 0.15s; white-space: nowrap;
+    }
+    .filter-chip:hover { background: #d0e8f7; color: #1a6fa3; }
+    .filter-chip .chip-x { font-size: 0.75rem; opacity: 0.7; }
+    .filter-chip-archive { background: #fef3cd; color: #856404; border-color: #fde68a; }
+    .filter-chip-archive:hover { background: #fde68a; color: #6b5000; }
 </style>
 
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -98,32 +164,41 @@
     <input type="text" name="search" placeholder="Search by model, serial, user, or location..."
            value="{{ search }}" style="flex: 2;">
 
-    <select name="device_type" onchange="this.form.submit()">
-        <option value="">All Device Types</option>
-        {% for type in device_types %}
-            <option value="{{ type }}" {% if type == selected_device_type %}selected{% endif %}>
-                {{ device_type_icons.get(type, '📦') }} {{ type }}
-            </option>
-        {% endfor %}
-    </select>
+    <div class="srch-wrap" id="dtWrap">
+        <input type="text" id="dtInput" placeholder="Search device type..."
+               autocomplete="off" value="{{ selected_device_type }}"
+               oninput="dtFilter.filter()" onfocus="dtFilter.open()" onkeydown="dtFilter.keyNav(event)" onblur="dtFilter.blur()">
+        <button type="button" class="srch-clear" id="dtClear"
+                onclick="dtFilter.clear()" style="display:{% if selected_device_type %}block{% else %}none{% endif %}">✕</button>
+        <button type="button" class="srch-caret" id="dtCaret"
+                onclick="dtFilter.open()" style="display:{% if selected_device_type %}none{% else %}block{% endif %}">▾</button>
+        <input type="hidden" name="device_type" id="dtHidden" value="{{ selected_device_type }}">
+        <div class="srch-drop" id="dtDrop"></div>
+    </div>
 
-    <select name="location" onchange="this.form.submit()">
-        <option value="">All Locations</option>
-        {% for island, locs in locations_by_island.items() %}
-            <optgroup label="{{ island }}">
-                {% for loc in locs %}
-                    <option value="{{ loc }}" {% if loc == selected_location %}selected{% endif %}>{{ loc }}</option>
-                {% endfor %}
-            </optgroup>
-        {% endfor %}
-    </select>
+    <div class="srch-wrap" id="locWrap">
+        <input type="text" id="locInput" placeholder="Search location..."
+               autocomplete="off" value="{{ selected_location }}"
+               oninput="locFilter.filter()" onfocus="locFilter.open()" onkeydown="locFilter.keyNav(event)" onblur="locFilter.blur()">
+        <button type="button" class="srch-clear" id="locClear"
+                onclick="locFilter.clear()" style="display:{% if selected_location %}block{% else %}none{% endif %}">✕</button>
+        <button type="button" class="srch-caret" id="locCaret"
+                onclick="locFilter.open()" style="display:{% if selected_location %}none{% else %}block{% endif %}">▾</button>
+        <input type="hidden" name="location" id="locHidden" value="{{ selected_location }}">
+        <div class="srch-drop" id="locDrop"></div>
+    </div>
 
-    <select name="island" onchange="this.form.submit()">
-        <option value="">All Islands</option>
-        {% for island in all_islands %}
-            <option value="{{ island }}" {% if island == selected_island %}selected{% endif %}>{{ island }}</option>
-        {% endfor %}
-    </select>
+    <div class="srch-wrap" id="islWrap">
+        <input type="text" id="islInput" placeholder="Search island..."
+               autocomplete="off" value="{{ selected_island }}"
+               oninput="islFilter.filter()" onfocus="islFilter.open()" onkeydown="islFilter.keyNav(event)" onblur="islFilter.blur()">
+        <button type="button" class="srch-clear" id="islClear"
+                onclick="islFilter.clear()" style="display:{% if selected_island %}block{% else %}none{% endif %}">✕</button>
+        <button type="button" class="srch-caret" id="islCaret"
+                onclick="islFilter.open()" style="display:{% if selected_island %}none{% else %}block{% endif %}">▾</button>
+        <input type="hidden" name="island" id="islHidden" value="{{ selected_island }}">
+        <div class="srch-drop" id="islDrop"></div>
+    </div>
 
     <select name="archive_filter" onchange="this.form.submit()">
         <option value="active" {% if archive_filter == 'active' %}selected{% endif %}>Active Devices</option>
@@ -135,6 +210,38 @@
     <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">Clear</a>
 </form>
 
+{% set any_filter = search or selected_device_type or selected_location or selected_island or archive_filter != 'active' %}
+{% if any_filter %}
+<div class="active-filters">
+    <span class="active-filters-label">Active filters:</span>
+    {% if search %}
+    <a href="{{ url_for('inventory_list', device_type=selected_device_type, location=selected_location, island=selected_island, archive_filter=archive_filter) }}" class="filter-chip">
+        Search: "{{ search }}" <span class="chip-x">✕</span>
+    </a>
+    {% endif %}
+    {% if selected_device_type %}
+    <a href="{{ url_for('inventory_list', search=search, location=selected_location, island=selected_island, archive_filter=archive_filter) }}" class="filter-chip">
+        Type: {{ selected_device_type }} <span class="chip-x">✕</span>
+    </a>
+    {% endif %}
+    {% if selected_location %}
+    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_type, island=selected_island, archive_filter=archive_filter) }}" class="filter-chip">
+        Location: {{ selected_location }} <span class="chip-x">✕</span>
+    </a>
+    {% endif %}
+    {% if selected_island %}
+    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_type, location=selected_location, archive_filter=archive_filter) }}" class="filter-chip">
+        Island: {{ selected_island }} <span class="chip-x">✕</span>
+    </a>
+    {% endif %}
+    {% if archive_filter != 'active' %}
+    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_type, location=selected_location, island=selected_island) }}" class="filter-chip filter-chip-archive">
+        {{ archive_filter | capitalize }} devices <span class="chip-x">✕</span>
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
 <div class="card" style="padding: 1.5rem;">
     <div class="card-header">
         <h3 class="card-title">Devices ({{ inventory|length }} items)</h3>
@@ -143,15 +250,20 @@
     {% if inventory %}
         <div class="table-container">
             <table class="inv-table">
+                {% macro sort_th(label) %}<th class="sortable-th" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc')">↑ A → Z</button><button onclick="doSort(event,this,'desc')">↓ Z → A</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
+{% macro sort_th_date(label) %}<th class="sortable-th" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc',true)">↑ Earliest → Latest</button><button onclick="doSort(event,this,'desc',true)">↓ Latest → Earliest</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
+{% macro sort_th_num(label) %}<th class="sortable-th" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc',false,true)">↑ Low → High</button><button onclick="doSort(event,this,'desc',false,true)">↓ High → Low</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
                 <thead>
                     <tr>
-                        <th>Device / Model</th>
-                        <th>Serial Number</th>
-                        <th>Assigned To</th>
-                        <th>Password</th>
-                        <th>Location</th>
-                        <th>Warranty End</th>
-                        <th>Phone</th>
+                        {{ sort_th('Device / Model') }}
+                        {{ sort_th('Serial Number') }}
+                        {{ sort_th('Assigned To') }}
+                        {{ sort_th('Password') }}
+                        {{ sort_th('Location') }}
+                        {{ sort_th_date('Warranty End') }}
+                        {{ sort_th_num('Phone') }}
+                        {{ sort_th_date('Added / Edited') }}
+                        {% if archive_filter in ('archived', 'all') %}{{ sort_th_date('Archived On') }}{% endif %}
                         <th class="col-actions">Actions</th>
                     </tr>
                 </thead>
@@ -175,6 +287,25 @@
                         </td>
                         <td>{{ device.purchase_date or '–' }}</td>
                         <td style="font-size: 0.85rem; white-space: nowrap;">{{ device.phone or '–' }}</td>
+                        <td style="font-size: 0.78rem; white-space: nowrap; line-height: 1.6;">
+                            {% if device.updated_at %}
+                                <span style="color: #2980b9; font-weight: 600;">Edited: {{ device.updated_at }}</span><br>
+                            {% endif %}
+                            {% if device.added_at %}
+                                {% if device.source == 'imported' %}
+                                    <span style="color: #2c3e50; font-weight: 700;">Imported: {{ device.added_at }}</span>
+                                {% else %}
+                                    <span style="color: #27ae60; font-weight: 600;">Added: {{ device.added_at }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span style="color: #bdc3c7;">–</span>
+                            {% endif %}
+                        </td>
+                        {% if archive_filter in ('archived', 'all') %}
+                        <td style="font-size: 0.82rem; white-space: nowrap; color: {% if device.archived %}#2c3e50; font-weight: 700{% else %}#bdc3c7{% endif %};">
+                            {{ device.archived_at or '–' }}
+                        </td>
+                        {% endif %}
                         <td class="col-actions">
                             <div class="action-btn-group">
                                 {% if not device.archived %}
@@ -374,6 +505,210 @@ document.getElementById('deviceTypesModal').addEventListener('click', function(e
 });
 document.getElementById('locationsModal').addEventListener('click', function(e) {
     if (e.target === this) this.style.display = 'none';
+});
+
+// ── Searchable filter combo boxes ─────────────────────────────────────────────
+function makeSearchFilter(cfg) {
+    var activeIdx = -1;
+    var inp  = function() { return document.getElementById(cfg.inputId); };
+    var hid  = function() { return document.getElementById(cfg.hiddenId); };
+    var clr  = function() { return document.getElementById(cfg.clearId); };
+    var drop = function() { return document.getElementById(cfg.dropId); };
+    var wrap = function() { return document.getElementById(cfg.wrapId); };
+    var cart = function() { return cfg.caretId ? document.getElementById(cfg.caretId) : null; };
+
+    function showCaret(show) { var c = cart(); if (c) c.style.display = show ? 'block' : 'none'; }
+
+    function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function render(q) {
+        var d = drop(); var html = ''; var hasAny = false;
+        if (cfg.grouped) {
+            Object.keys(cfg.data).forEach(function(group) {
+                var hits = cfg.data[group].filter(function(v) { return !q || v.toLowerCase().includes(q); });
+                if (hits.length) {
+                    hasAny = true;
+                    html += '<div class="srch-group">' + esc(group) + '</div>';
+                    hits.forEach(function(v) { html += '<div class="srch-item" data-val="' + esc(v) + '">' + esc(v) + '</div>'; });
+                }
+            });
+        } else {
+            cfg.data.filter(function(v) { return !q || v.toLowerCase().includes(q); }).forEach(function(v) {
+                hasAny = true;
+                html += '<div class="srch-item" data-val="' + esc(v) + '">' + esc(v) + '</div>';
+            });
+        }
+        d.innerHTML = hasAny ? html : '<div class="srch-none">No matches found</div>';
+        d.querySelectorAll('.srch-item').forEach(function(el) {
+            el.addEventListener('click', function() { select(el.dataset.val); });
+        });
+    }
+
+    function open() { render(''); drop().classList.add('open'); }
+
+    function filter() {
+        var q = inp().value.trim().toLowerCase();
+        render(q); drop().classList.add('open');
+        clr().style.display = (q || hid().value) ? 'block' : 'none';
+        showCaret(!(q || hid().value));
+        activeIdx = -1;
+        // Do NOT clear hid() here — keep the committed value until a new item is selected or X is clicked
+    }
+
+    function select(val) {
+        inp().value = val; hid().value = val;
+        clr().style.display = 'block';
+        showCaret(false);
+        drop().classList.remove('open');
+        wrap().closest('form').submit();
+    }
+
+    function clear() {
+        inp().value = ''; hid().value = '';
+        clr().style.display = 'none';
+        showCaret(true);
+        drop().classList.remove('open');
+        wrap().closest('form').submit();
+    }
+
+    function blur() {
+        // Delay so a click on a dropdown item fires select() before we reset
+        setTimeout(function() {
+            inp().value = hid().value;
+            if (hid().value) { showCaret(false); clr().style.display = 'block'; }
+            else { showCaret(true); clr().style.display = 'none'; }
+        }, 150);
+    }
+
+    function keyNav(e) {
+        var d = drop(); var items = Array.from(d.querySelectorAll('.srch-item'));
+        if (e.key === 'Escape') { d.classList.remove('open'); }
+        else if (e.key === 'ArrowDown') {
+            e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1);
+            items.forEach(function(el, i) { el.classList.toggle('srch-active', i === activeIdx); });
+            if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault(); activeIdx = Math.max(activeIdx - 1, -1);
+            items.forEach(function(el, i) { el.classList.toggle('srch-active', i === activeIdx); });
+            if (activeIdx >= 0 && items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeIdx >= 0 && items[activeIdx]) items[activeIdx].click();
+            else if (items.length === 1) items[0].click();
+        }
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!wrap().contains(e.target)) drop().classList.remove('open');
+    });
+
+    return { open: open, filter: filter, keyNav: keyNav, clear: clear, blur: blur };
+}
+
+var locFilter = makeSearchFilter({ wrapId:'locWrap', inputId:'locInput', hiddenId:'locHidden', clearId:'locClear', caretId:'locCaret', dropId:'locDrop', data: {{ locations_by_island | tojson }}, grouped: true });
+var dtFilter  = makeSearchFilter({ wrapId:'dtWrap',  inputId:'dtInput',  hiddenId:'dtHidden',  clearId:'dtClear',  caretId:'dtCaret',  dropId:'dtDrop',  data: {{ device_types | tojson }}, grouped: false });
+var islFilter = makeSearchFilter({ wrapId:'islWrap', inputId:'islInput', hiddenId:'islHidden', clearId:'islClear', caretId:'islCaret', dropId:'islDrop', data: {{ all_islands | tojson }}, grouped: false });
+
+// ── Column sort ──────────────────────────────────────────────────────────────
+var originalRowOrder = [];
+document.addEventListener('DOMContentLoaded', function() {
+    var tbody = document.querySelector('.inv-table tbody');
+    if (tbody) originalRowOrder = Array.from(tbody.querySelectorAll('tr'));
+});
+
+function toggleSortDrop(e, th) {
+    e.stopPropagation();
+    var drop = th.querySelector('.sort-drop');
+    var isOpen = drop.classList.contains('open');
+    document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+    if (!isOpen) drop.classList.add('open');
+}
+
+function parseCellDate(text) {
+    // Full timestamp: MM-DD-YYYY HH:MM:SS (Added/Edited column)
+    var m = text.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (m) return parseInt(m[3] + m[1] + m[2] + m[4] + m[5] + m[6]); // YYYYMMDDHHMMSS
+    // Plain date: MM-DD-YYYY (Warranty End column)
+    var d = text.match(/(\d{2})-(\d{2})-(\d{4})/);
+    if (d) return parseInt(d[3] + d[1] + d[2] + '000000'); // YYYYMMDD000000
+    return 0;
+}
+
+function isBlank(text) {
+    var t = text.trim().toLowerCase();
+    return t === '' || t === '–' || t === '-' || t === 'n/a' || t === 'na' || t === 'none';
+}
+
+function doSort(e, btn, dir, isDate, isNumeric) {
+    e.stopPropagation();
+    var th = btn.closest('th');
+    var colIdx = th.cellIndex;
+    var tbody = document.querySelector('.inv-table tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort(function(a, b) {
+        var aCell = a.cells[colIdx] ? a.cells[colIdx].textContent.trim() : '';
+        var bCell = b.cells[colIdx] ? b.cells[colIdx].textContent.trim() : '';
+        if (isDate) {
+            var aDate = parseCellDate(aCell), bDate = parseCellDate(bCell);
+            if (!aDate && !bDate) return 0;
+            if (!aDate) return 1;
+            if (!bDate) return -1;
+            return dir === 'asc' ? aDate - bDate : bDate - aDate;
+        }
+        if (isNumeric) {
+            var aBlank = isBlank(aCell), bBlank = isBlank(bCell);
+            if (aBlank && bBlank) return 0;
+            if (aBlank) return 1;
+            if (bBlank) return -1;
+            var aNum = parseInt(aCell.replace(/\D/g, ''), 10) || 0;
+            var bNum = parseInt(bCell.replace(/\D/g, ''), 10) || 0;
+            return dir === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        var aBlank = isBlank(aCell), bBlank = isBlank(bCell);
+        if (aBlank && bBlank) return 0;
+        if (aBlank) return 1;
+        if (bBlank) return -1;
+        return dir === 'asc' ? aCell.toLowerCase().localeCompare(bCell.toLowerCase())
+                              : bCell.toLowerCase().localeCompare(aCell.toLowerCase());
+    });
+    rows.forEach(function(r) { tbody.appendChild(r); });
+    document.querySelectorAll('.inv-table thead .sort-ind').forEach(function(s) { s.textContent = ''; });
+    var ind = th.querySelector('.sort-ind');
+    if (ind) ind.textContent = dir === 'asc' ? ' ↑' : ' ↓';
+    document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+}
+
+function showBlanks(e, btn) {
+    e.stopPropagation();
+    var th = btn.closest('th');
+    var colIdx = th.cellIndex;
+    var tbody = document.querySelector('.inv-table tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort(function(a, b) {
+        var aBlank = isBlank(a.cells[colIdx] ? a.cells[colIdx].textContent.trim() : '');
+        var bBlank = isBlank(b.cells[colIdx] ? b.cells[colIdx].textContent.trim() : '');
+        if (aBlank === bBlank) return 0;
+        return aBlank ? -1 : 1;
+    });
+    rows.forEach(function(r) { tbody.appendChild(r); });
+    document.querySelectorAll('.inv-table thead .sort-ind').forEach(function(s) { s.textContent = ''; });
+    var ind = th.querySelector('.sort-ind');
+    if (ind) ind.textContent = ' ∅';
+    document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+}
+
+function clearSort(e) {
+    e.stopPropagation();
+    var tbody = document.querySelector('.inv-table tbody');
+    if (tbody && originalRowOrder.length) {
+        originalRowOrder.forEach(function(r) { tbody.appendChild(r); });
+    }
+    document.querySelectorAll('.inv-table thead .sort-ind').forEach(function(s) { s.textContent = ''; });
+    document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+}
+
+document.addEventListener('click', function() {
+    document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
 });
 </script>
 {% endblock %}

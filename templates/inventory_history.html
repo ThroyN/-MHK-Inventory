@@ -45,11 +45,12 @@
             <tbody>
                 {% for entry in history %}
                 <tr>
-                    <td style="font-size:0.82rem; white-space:nowrap; color:#7f8c8d;">{{ entry.timestamp }}</td>
+                    <td style="font-size:0.82rem; white-space:nowrap; color:#7f8c8d; font-weight:700;">{{ entry.timestamp }}</td>
                     <td style="font-size:0.85rem; font-weight:600; white-space:nowrap;">{{ entry.performed_by or '–' }}</td>
                     <td>
                         <span class="badge" style="
                             {% if 'Undone' in entry.action %}background-color:#e74c3c;
+                            {% elif entry.action == 'Imported' %}background-color:#8e44ad;
                             {% elif 'Added' in entry.action %}background-color:#27ae60;
                             {% elif 'Edited' in entry.action %}background-color:#3498db;
                             {% elif 'Deleted' in entry.action %}background-color:#e74c3c;
@@ -61,8 +62,12 @@
                         </span>
                     </td>
                     <td>
-                        <span style="font-size:0.72rem; color:#7f8c8d; text-transform:uppercase;">{{ entry.device_type }}</span><br>
-                        <strong>{{ entry.model }}</strong>
+                        {% if entry.action == 'Imported' %}
+                            <span style="font-size:0.82rem; color:#8e44ad;">📥 {{ entry.model }}</span>
+                        {% else %}
+                            <span style="font-size:0.72rem; color:#7f8c8d; text-transform:uppercase;">{{ entry.device_type }}</span><br>
+                            <strong>{{ entry.model }}</strong>
+                        {% endif %}
                     </td>
                     <td style="font-family:monospace; font-size:0.82rem;">{{ entry.serial_number or '–' }}</td>
                     <td style="font-size:0.85rem;">{{ entry.location_code or '–' }}</td>

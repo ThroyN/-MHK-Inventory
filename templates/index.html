@@ -3,7 +3,13 @@
 {% block title %}Dashboard - IT Management System{% endblock %}
 
 {% block content %}
-<h2 style="margin-bottom: 2rem; color: #2c3e50;">📊 Dashboard Overview</h2>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2 style="margin: 0; color: #2c3e50;">📊 Dashboard Overview</h2>
+    <div style="display: flex; gap: 0.75rem;">
+        <a href="{{ url_for('add_device') }}" class="btn btn-success">➕ Add New Device</a>
+        <a href="{{ url_for('add_ticket') }}" class="btn btn-primary">🎫 Submit New Ticket</a>
+    </div>
+</div>
 
 <div class="stats-grid">
     <a href="{{ url_for('inventory_list') }}" class="stat-card" style="text-decoration:none; cursor:pointer; transition: box-shadow 0.2s, transform 0.2s;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,0.15)';this.style.transform='translateY(-2px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
@@ -136,8 +142,4 @@
     {% endif %}
 </div>
 
-<div style="display: flex; gap: 1rem; margin-top: 2rem;">
-    <a href="{{ url_for('add_device') }}" class="btn btn-success">➕ Add New Device</a>
-    <a href="{{ url_for('add_ticket') }}" class="btn btn-primary">🎫 Submit New Ticket</a>
-</div>
 {% endblock %}

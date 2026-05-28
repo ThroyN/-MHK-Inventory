@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, session
 from datetime import datetime
 from urllib.parse import quote
+from werkzeug.security import generate_password_hash, check_password_hash
 import json
 import os
 import csv
@@ -107,7 +108,8 @@ def init_db():
             archived      INTEGER DEFAULT 0,
             archived_at   TEXT    DEFAULT '',
             added_at      TEXT    DEFAULT '',
-            updated_at    TEXT    DEFAULT ''
+            updated_at    TEXT    DEFAULT '',
+            source        TEXT    DEFAULT 'added'
         );
         CREATE TABLE IF NOT EXISTS tickets (
             id           INTEGER PRIMARY KEY,
@@ -136,8 +138,9 @@ def init_db():
             device_snapshot TEXT DEFAULT '{}'
         );
         CREATE TABLE IF NOT EXISTS users (
-            id   INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT UNIQUE NOT NULL,
+            password_hash TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS device_types (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,6 +156,14 @@ def init_db():
             name TEXT UNIQUE NOT NULL
         );
     ''')
+    # Add source column to existing databases that don't have it yet
+    existing = [row[1] for row in conn.execute('PRAGMA table_info(inventory)').fetchall()]
+    if 'source' not in existing:
+        conn.execute("ALTER TABLE inventory ADD COLUMN source TEXT DEFAULT 'added'")
+    # Add password_hash column to users if missing
+    user_cols = [row[1] for row in conn.execute('PRAGMA table_info(users)').fetchall()]
+    if 'password_hash' not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
     conn.commit()
     conn.close()
 
@@ -212,8 +223,7 @@ def _migrate_json_to_db():
 
     # Users
     if conn.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0:
-        users = _json_load(USERS_FILE) or ['Tom', 'Throy', 'Dan']
-        for name in users:
+        for name in _json_load(USERS_FILE):
             conn.execute('INSERT OR IGNORE INTO users (name) VALUES (?)', (name,))
 
     # Device types
@@ -264,15 +274,16 @@ def save_inventory(inventory):
             conn.execute('''INSERT INTO inventory
                 (id,device_type,model,serial_number,assigned_user,password,
                  purchase_date,condition,location_code,island,phone,notes,
-                 archived,archived_at,added_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                 archived,archived_at,added_at,updated_at,source)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
                 d.get('id'), d.get('device_type',''), d.get('model',''),
                 d.get('serial_number',''), d.get('assigned_user',''),
                 d.get('password',''), d.get('purchase_date',''),
                 d.get('condition','Good'), d.get('location_code',''),
                 d.get('island',''), d.get('phone',''), d.get('notes',''),
                 1 if d.get('archived') else 0,
-                d.get('archived_at',''), d.get('added_at',''), d.get('updated_at','')))
+                d.get('archived_at',''), d.get('added_at',''), d.get('updated_at',''),
+                d.get('source','added')))
         conn.commit()
     except Exception:
         conn.rollback()
@@ -348,49 +359,33 @@ def save_history(history):
         conn.close()
 
 def log_history(action, device, changes=None):
-    history = load_history()
-    entry = {
-        'id': generate_id(history),
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'performed_by': session.get('current_user', 'Unknown') if session else 'System',
-        'action': action,
-        'device_id': device.get('id'),
-        'device_type': device.get('device_type', ''),
-        'model': device.get('model', ''),
-        'serial_number': device.get('serial_number', ''),
-        'location_code': device.get('location_code', ''),
-        'island': device.get('island', ''),
-        'assigned_user': device.get('assigned_user', ''),
-        'changes': changes or {},
-        'device_snapshot': copy.deepcopy(device)
-    }
-    history.insert(0, entry)
-    save_history(history)
+    conn = get_db()
+    conn.execute('''INSERT INTO history
+        (timestamp,performed_by,action,device_id,device_type,model,
+         serial_number,location_code,island,assigned_user,changes,device_snapshot)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''', (
+        datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
+        session.get('current_user', 'Unknown') if session else 'System',
+        action,
+        device.get('id'),
+        device.get('device_type', ''),
+        device.get('model', ''),
+        device.get('serial_number', ''),
+        device.get('location_code', ''),
+        device.get('island', ''),
+        device.get('assigned_user', ''),
+        json.dumps(changes or {}),
+        json.dumps(copy.deepcopy(device))
+    ))
+    conn.commit()
+    conn.close()
 
 def load_users():
     conn = get_db()
     rows = conn.execute('SELECT name FROM users ORDER BY id').fetchall()
     conn.close()
-    names = [row['name'] for row in rows]
-    if not names:
-        default = ['Tom', 'Throy', 'Dan']
-        save_users(default)
-        return default
-    return names
+    return [row['name'] for row in rows]
 
-def save_users(users):
-    conn = get_db()
-    try:
-        conn.execute('BEGIN')
-        conn.execute('DELETE FROM users')
-        for name in users:
-            conn.execute('INSERT INTO users (name) VALUES (?)', (name,))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 def load_device_types():
     conn = get_db()
@@ -459,32 +454,55 @@ def save_islands(islands):
 
 @app.before_request
 def require_user():
-    allowed = {'select_user', 'add_user', 'delete_user', 'logout', 'static'}
+    allowed = {'select_user', 'add_user', 'delete_user', 'change_password', 'logout', 'static'}
     if request.endpoint not in allowed and 'current_user' not in session:
         return redirect(url_for('select_user'))
 
 @app.route('/select-user', methods=['GET', 'POST'])
 def select_user():
     users = load_users()
+    conn = get_db()
+    login_users = [r['name'] for r in conn.execute(
+        "SELECT name FROM users WHERE password_hash IS NOT NULL AND password_hash != '' ORDER BY id"
+    ).fetchall()]
+    conn.close()
     if request.method == 'POST':
         chosen = request.form.get('user', '').strip()
-        if chosen and chosen in users:
-            session['current_user'] = chosen
-            return redirect(url_for('index'))
-        flash('Please select a valid user.', 'error')
-    return render_template('select_user.html', users=users)
+        password = request.form.get('password', '')
+        if not chosen or chosen not in login_users:
+            flash('Please select a valid user.', 'error')
+            return redirect(url_for('select_user'))
+        conn = get_db()
+        row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (chosen,)).fetchone()
+        conn.close()
+        stored_hash = row['password_hash'] if row else ''
+        if not check_password_hash(stored_hash, password):
+            flash('Incorrect password.', 'error')
+            return redirect(url_for('select_user'))
+        session['current_user'] = chosen
+        return redirect(url_for('index'))
+    return render_template('select_user.html', users=users, login_users=login_users)
 
 @app.route('/add-user', methods=['POST'])
 def add_user():
     users = load_users()
     new_name = request.form.get('new_user', '').strip()
+    password = request.form.get('new_password', '').strip()
+    confirm = request.form.get('confirm_password', '').strip()
     if not new_name:
         flash('Please enter a name.', 'error')
+    elif not password:
+        flash('Please enter a password.', 'error')
+    elif password != confirm:
+        flash('Passwords do not match.', 'error')
     elif new_name in users:
         flash(f'"{new_name}" already exists.', 'error')
     else:
-        users.append(new_name)
-        save_users(users)
+        conn = get_db()
+        conn.execute('INSERT INTO users (name, password_hash) VALUES (?, ?)',
+                     (new_name, generate_password_hash(password)))
+        conn.commit()
+        conn.close()
         flash(f'User "{new_name}" added.', 'success')
     return redirect(url_for('select_user'))
 
@@ -492,14 +510,61 @@ def add_user():
 def delete_user():
     users = load_users()
     name = request.form.get('user', '').strip()
-    if name in users:
-        users.remove(name)
-        save_users(users)
-        if session.get('current_user') == name:
-            session.pop('current_user', None)
-        flash(f'User "{name}" removed.', 'success')
-    else:
+    password = request.form.get('password', '')
+    if name not in users:
         flash('User not found.', 'error')
+        return redirect(url_for('select_user'))
+    conn = get_db()
+    row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (name,)).fetchone()
+    stored_hash = row['password_hash'] if row else ''
+    if stored_hash and not check_password_hash(stored_hash, password):
+        conn.close()
+        flash('Incorrect password. User not removed.', 'error')
+        return redirect(url_for('select_user'))
+    conn.execute('DELETE FROM users WHERE name = ?', (name,))
+    conn.commit()
+    conn.close()
+    if session.get('current_user') == name:
+        session.pop('current_user', None)
+    flash(f'User "{name}" removed.', 'success')
+    return redirect(url_for('select_user'))
+
+@app.route('/change-password', methods=['POST'])
+def change_password():
+    name = request.form.get('user', '').strip()
+    current = request.form.get('current_password', '')
+    new_pw = request.form.get('new_password', '').strip()
+    confirm = request.form.get('confirm_password', '').strip()
+    if not name:
+        flash('Please select a user.', 'error')
+        return redirect(url_for('select_user'))
+    conn = get_db()
+    row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (name,)).fetchone()
+    if not row:
+        conn.close()
+        flash('User not found.', 'error')
+        return redirect(url_for('select_user'))
+    if not check_password_hash(row['password_hash'], current):
+        conn.close()
+        flash('Current password is incorrect.', 'error')
+        return redirect(url_for('select_user'))
+    if not new_pw:
+        conn.close()
+        flash('New password cannot be empty.', 'error')
+        return redirect(url_for('select_user'))
+    if new_pw == current:
+        conn.close()
+        flash('New password must be different from your current password.', 'error')
+        return redirect(url_for('select_user'))
+    if new_pw != confirm:
+        conn.close()
+        flash('New passwords do not match.', 'error')
+        return redirect(url_for('select_user'))
+    conn.execute('UPDATE users SET password_hash = ? WHERE name = ?',
+                 (generate_password_hash(new_pw), name))
+    conn.commit()
+    conn.close()
+    flash(f'Password updated for "{name}".', 'success')
     return redirect(url_for('select_user'))
 
 @app.route('/logout')
@@ -611,6 +676,10 @@ def add_location():
     else:
         locations.append({'code': code, 'island': island})
         save_locations(locations)
+        log_history('Location Added', {
+            'id': None, 'device_type': '', 'model': f'Location "{code}" (Island: {island or "—"})',
+            'serial_number': '', 'location_code': code, 'island': island, 'assigned_user': ''
+        })
         flash(f'Location "{code}" added.', 'success')
     return redirect(url_for('inventory_list'))
 
@@ -629,6 +698,10 @@ def delete_location():
         return redirect(url_for('inventory_list'))
     locations = [l for l in locations if l['code'] != code]
     save_locations(locations)
+    log_history('Location Deleted', {
+        'id': None, 'device_type': '', 'model': f'Location "{code}"',
+        'serial_number': '', 'location_code': code, 'island': '', 'assigned_user': ''
+    })
     flash(f'Location "{code}" removed.', 'success')
     return redirect(url_for('inventory_list'))
 
@@ -759,15 +832,16 @@ def add_device():
             'serial_number': serial_number,
             'assigned_user': request.form.get('assigned_user', ''),
             'password': request.form.get('password', ''),
-            'purchase_date': request.form.get('purchase_date', ''),
+            'purchase_date': _normalize_date(request.form.get('purchase_date', '')),
             'condition': request.form.get('condition', 'Good'),
             'location_code': location_code,
-            'island': request.form.get('island', ''),
+            'island': _island_for_location(location_code),
             'phone': request.form.get('phone', ''),
             'notes': request.form.get('notes', ''),
             'archived': False,
-            'added_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': ''
+            'added_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
+            'updated_at': '',
+            'source': 'added'
         }
 
         inventory.append(new_device)
@@ -801,22 +875,27 @@ def edit_device(device_id):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('edit_device', device_id=device_id))
         # Track changes for history
-        track_fields = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'location_code', 'island', 'phone', 'purchase_date', 'condition', 'notes']
+        track_fields = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'location_code', 'phone', 'purchase_date', 'condition', 'notes']
         changes = {f: {'from': device.get(f, ''), 'to': request.form.get(f, device.get(f, ''))} for f in track_fields if str(device.get(f, '')) != str(request.form.get(f, device.get(f, '')))}
+        # Island is auto-derived — track separately since it has no form field
+        old_island = device.get('island', '')
+        new_island = _island_for_location(request.form.get('location_code', ''))
+        if old_island != new_island:
+            changes['island'] = {'from': old_island, 'to': new_island}
         # Update device
         device['device_type'] = request.form.get('device_type')
         device['model'] = request.form.get('model')
         device['serial_number'] = request.form.get('serial_number')
         device['assigned_user'] = request.form.get('assigned_user', '')
         device['password'] = request.form.get('password', '')
-        device['purchase_date'] = request.form.get('purchase_date', '')
+        device['purchase_date'] = _normalize_date(request.form.get('purchase_date', ''))
         condition = request.form.get('condition', 'Good')
         device['condition'] = condition if condition in DEVICE_CONDITIONS else 'Good'
         device['location_code'] = request.form.get('location_code')
-        device['island'] = request.form.get('island', device.get('island', ''))
+        device['island'] = _island_for_location(request.form.get('location_code', ''))
         device['phone'] = request.form.get('phone', '')
         device['notes'] = request.form.get('notes', '')
-        device['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        device['updated_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         
         save_inventory(inventory)
         log_history('Edited', device, changes)
@@ -830,6 +909,7 @@ def edit_device(device_id):
                          device_types=load_device_types(),
                          locations_by_island=_build_locations_by_island(inventory),
                          all_islands=all_islands,
+                         location_codes=LOCATION_CODES,
                          conditions=DEVICE_CONDITIONS)
 
 @app.route('/inventory/delete/<int:device_id>', methods=['POST'])
@@ -852,7 +932,7 @@ def archive_device(device_id):
     device = next((item for item in inventory if item['id'] == device_id), None)
     if device:
         device['archived'] = True
-        device['archived_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        device['archived_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         save_inventory(inventory)
         log_history('Archived', device)
         flash(f'Device {device["model"]} archived.', 'success')
@@ -868,7 +948,7 @@ def mark_tbd(device_id):
     if device:
         # Archive the original to preserve history
         device['archived'] = True
-        device['archived_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        device['archived_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
 
         # Create a fresh active copy with TBD fields
         new_device = copy.deepcopy(device)
@@ -878,7 +958,7 @@ def mark_tbd(device_id):
         new_device['phone'] = 'TBD'
         new_device['archived'] = False
         new_device.pop('archived_at', None)
-        new_device['added_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        new_device['added_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         new_device.pop('updated_at', None)
 
         inventory.append(new_device)
@@ -944,7 +1024,7 @@ def undo_history(history_id):
             history = [e for e in history if e['id'] not in (archive_entry['id'], tbd_entry['id'])]
             undo_entry = {
                 'id': generate_id(history),
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
                 'performed_by': undone_by,
                 'action': 'Undone: Archive+TBD',
                 'device_id': archive_entry['device_id'],
@@ -968,7 +1048,7 @@ def undo_history(history_id):
         inventory = [d for d in inventory if d['id'] != device_id]
         save_inventory(inventory)
         history = [e for e in history if e['id'] != history_id]
-        history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
             'performed_by': undone_by, 'action': f'Undone: Added',
             'device_id': device_id, 'device_type': entry.get('device_type',''), 'model': entry.get('model',''),
             'serial_number': entry.get('serial_number',''), 'location_code': entry.get('location_code',''),
@@ -986,7 +1066,7 @@ def undo_history(history_id):
                     device[field] = diff['from']
             save_inventory(inventory)
             history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
                 'performed_by': undone_by, 'action': 'Undone: Edited',
                 'device_id': device_id, 'device_type': device.get('device_type',''), 'model': device.get('model',''),
                 'serial_number': device.get('serial_number',''), 'location_code': device.get('location_code',''),
@@ -1005,7 +1085,7 @@ def undo_history(history_id):
             inventory.append(snapshot)
             save_inventory(inventory)
             history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
                 'performed_by': undone_by, 'action': 'Undone: Deleted',
                 'device_id': snapshot['id'], 'device_type': snapshot.get('device_type',''), 'model': snapshot.get('model',''),
                 'serial_number': snapshot.get('serial_number',''), 'location_code': snapshot.get('location_code',''),
@@ -1023,8 +1103,7 @@ def undo_history(history_id):
             device['archived'] = False
             device.pop('archived_at', None)
             save_inventory(inventory)
-            history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
                 'performed_by': undone_by, 'action': 'Undone: Archived',
                 'device_id': device_id, 'device_type': entry.get('device_type',''), 'model': entry.get('model',''),
                 'serial_number': entry.get('serial_number',''), 'location_code': entry.get('location_code',''),
@@ -1040,10 +1119,10 @@ def undo_history(history_id):
         device = next((d for d in inventory if d['id'] == device_id), None)
         if device:
             device['archived'] = True
-            device['archived_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            device['archived_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
             save_inventory(inventory)
             history = [e for e in history if e['id'] != history_id]
-            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            history.insert(0, {'id': generate_id(history), 'timestamp': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
                 'performed_by': undone_by, 'action': 'Undone: Restored',
                 'device_id': device_id, 'device_type': entry.get('device_type',''), 'model': entry.get('model',''),
                 'serial_number': entry.get('serial_number',''), 'location_code': entry.get('location_code',''),
@@ -1148,8 +1227,8 @@ def add_ticket():
             'priority': request.form.get('priority', 'Medium'),
             'status': 'Open',
             'submitted_by': submitted_by,
-            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'created_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
+            'updated_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         }
         
         tickets.append(new_ticket)
@@ -1188,7 +1267,7 @@ def update_ticket_status(ticket_id):
             flash('Invalid status value.', 'error')
             return redirect(url_for('view_ticket', ticket_id=ticket_id))
         ticket['status'] = new_status
-        ticket['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ticket['updated_at'] = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         save_tickets(tickets)
         flash(f'Ticket #{ticket_id} status updated to {new_status}!', 'success')
     else:
@@ -1207,6 +1286,43 @@ def delete_ticket(ticket_id):
     return redirect(url_for('tickets_list'))
 
 CSV_COLUMNS = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'purchase_date', 'condition', 'location_code', 'island', 'phone', 'notes']
+
+def _normalize_date(date_str):
+    """Parse common date formats and return MM-DD-YYYY. Returns original string if unparseable."""
+    if not date_str or not date_str.strip():
+        return date_str
+    s = date_str.strip()
+    for fmt in (
+        '%m-%d-%Y',    # already correct: 03-07-2030
+        '%m/%d/%y',    # 3/7/30  →  2-digit year (00-68 = 2000-2068)
+        '%m/%d/%Y',    # 3/7/2030
+        '%Y-%m-%d',    # 2030-03-07  (ISO / Excel)
+        '%m-%d-%y',    # 03-07-30
+        '%B %d, %Y',   # January 15, 2030
+        '%b %d, %Y',   # Jan 15, 2030
+        '%B %d %Y',    # January 15 2030
+        '%b %d %Y',    # Jan 15 2030
+    ):
+        try:
+            return datetime.strptime(s, fmt).strftime('%m-%d-%Y')
+        except ValueError:
+            continue
+    return s  # unrecognised — keep as-is
+
+def _island_for_location(location_code):
+    """Return the island for a given location code.
+    Checks locations table first, then falls back to existing inventory data."""
+    conn = get_db()
+    row = conn.execute('SELECT island FROM locations WHERE code = ?', (location_code,)).fetchone()
+    if row and row['island']:
+        conn.close()
+        return row['island']
+    inv_row = conn.execute(
+        "SELECT island FROM inventory WHERE location_code = ? AND island != '' LIMIT 1",
+        (location_code,)
+    ).fetchone()
+    conn.close()
+    return inv_row['island'] if inv_row else ''
 
 def _build_locations_by_island(inventory=None):
     if inventory is None:
@@ -1280,7 +1396,7 @@ def _xlsx_cell_str(val):
     if isinstance(val, float) and val.is_integer():
         return str(int(val))
     if hasattr(val, 'strftime'):
-        return val.strftime('%Y-%m-%d')
+        return val.strftime('%m-%d-%Y')
     return str(val).strip()
 
 def _process_rows(rows):
@@ -1319,16 +1435,19 @@ def _process_rows(rows):
             'device_type': device_type,
             'model': str(row.get('model', '')).strip() or '-',
             'serial_number': str(row.get('serial_number', '')).strip() or 'n/a',
-            'assigned_user': str(row.get('assigned_user', '')).strip(),
+            'assigned_user': (str(row.get('assigned_user', '')).strip() or
+                              str(row.get('contact', '')).strip()),
             'password': str(row.get('password', '')).strip(),
-            'purchase_date': str(row.get('purchase_date', '')).strip(),
+            'purchase_date': _normalize_date(str(row.get('purchase_date', '')).strip()),
             'condition': condition,
             'location_code': str(row.get('location_code', '')).strip(),
-            'island': str(row.get('island', '')).strip(),
+            'island': str(row.get('island', '')).strip() or _island_for_location(str(row.get('location_code', '')).strip()),
             'phone': str(row.get('phone', '')).strip(),
             'notes': str(row.get('notes', '')).strip(),
             'archived': False,
-            'added_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'added_at': datetime.now().strftime('%m-%d-%Y %H:%M:%S'),
+            'updated_at': '',
+            'source': 'imported'
         }
         inventory.append(new_device)
         imported += 1
@@ -1361,7 +1480,7 @@ def import_inventory():
                         continue
                     rows.append({
                         col: (_xlsx_cell_str(row[header_map[col]].value) if col in header_map else '')
-                        for col in CSV_COLUMNS
+                        for col in CSV_COLUMNS + ['contact']
                     })
                 wb.close()
             except Exception as e:
@@ -1374,6 +1493,10 @@ def import_inventory():
             imported, skipped, skip_reasons = _process_rows(rows)
 
             if imported:
+                log_history('Imported', {
+                    'id': None, 'device_type': '', 'model': f'{imported} device(s) from "{sheet_name}"',
+                    'serial_number': '', 'location_code': '', 'island': '', 'assigned_user': ''
+                })
                 msg = f'Successfully imported {imported} device(s) from "{sheet_name}".'
                 if skipped:
                     reasons = '; '.join(f'{count}x {reason}' for reason, count in skip_reasons.items())
@@ -1405,6 +1528,10 @@ def import_inventory():
             imported, skipped, skip_reasons = _process_rows(rows)
 
             if imported:
+                log_history('Imported', {
+                    'id': None, 'device_type': '', 'model': f'{imported} device(s) from "{file.filename}"',
+                    'serial_number': '', 'location_code': '', 'island': '', 'assigned_user': ''
+                })
                 msg = f'Successfully imported {imported} device(s).'
                 if skipped:
                     reasons = '; '.join(f'{count}x {reason}' for reason, count in skip_reasons.items())
@@ -1531,5 +1658,5 @@ def export_inventory():
 
 if __name__ == '__main__':
     init_data_storage()
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, host='0.0.0.0', port=5002)
 

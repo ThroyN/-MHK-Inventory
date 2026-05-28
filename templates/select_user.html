@@ -36,11 +36,26 @@
             margin-top: 0.3rem;
             font-size: 0.95rem;
         }
-        .flash { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
-        .flash.error { background: #f8d7da; color: #721c24; }
-        .flash.success { background: #d4edda; color: #155724; }
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            padding: 0.9rem 1.2rem;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity 0.3s, transform 0.3s;
+            max-width: 320px;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.error { background: #e74c3c; color: white; }
+        .toast.success { background: #27ae60; color: white; }
         label { display: block; font-weight: 600; color: #2c3e50; margin-bottom: 0.4rem; font-size: 0.95rem; }
-        select, input[type="text"] {
+        select, input[type="text"], input[type="password"] {
             width: 100%;
             padding: 0.65rem 0.9rem;
             border: 1px solid #ddd;
@@ -50,6 +65,7 @@
             background: #fafafa;
         }
         select:focus, input:focus { outline: none; border-color: #3498db; background: white; }
+        .add-col { display: flex; flex-direction: column; gap: 0.5rem; }
         .btn {
             display: inline-block;
             padding: 0.65rem 1.2rem;
@@ -84,6 +100,14 @@
         }
         .user-row form { margin: 0; }
         .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.78rem; border-radius: 4px; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .btn-warning { background: #e67e22; color: white; }
+        .btn-warning:hover { background: #ca6f1e; }
+        .pw-form { display: none; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0.75rem; background: #f0f4f8; border-radius: 6px; margin-top: 0.3rem; }
+        .pw-form input { font-size: 0.88rem; padding: 0.45rem 0.7rem; }
+        .pw-form-btns { display: flex; gap: 0.4rem; }
+        .pw-form-btns button { flex: 1; font-size: 0.82rem; padding: 0.4rem 0; }
     </style>
 </head>
 <body>
@@ -96,45 +120,105 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="flash {{ category }}">{{ message }}</div>
+                    <div class="toast {{ category }}" id="toast-{{ loop.index }}">{{ message }}</div>
+                    <script>
+                        (function() {
+                            var t = document.getElementById('toast-{{ loop.index }}');
+                            setTimeout(function() { t.classList.add('show'); }, 50);
+                            setTimeout(function() { t.classList.remove('show'); }, 3500);
+                        })();
+                    </script>
                 {% endfor %}
             {% endif %}
         {% endwith %}
 
+        {% if login_users %}
         <form method="POST" action="{{ url_for('select_user') }}">
             <label for="user">Who are you?</label>
             <select name="user" id="user" style="margin-bottom: 1rem;">
                 <option value="">— Select your name —</option>
-                {% for user in users %}
+                {% for user in login_users %}
                     <option value="{{ user }}">{{ user }}</option>
                 {% endfor %}
             </select>
+            <label for="password" style="margin-bottom: 0.4rem;">Password</label>
+            <input type="password" name="password" id="password" placeholder="Enter your password..." style="margin-bottom: 1rem;">
             <button type="submit" class="btn btn-primary">Enter System</button>
         </form>
+        {% else %}
+        <p style="text-align:center; color:#7f8c8d; font-size:0.9rem; padding: 1rem 0;">No registered users yet. Add a user below to get started.</p>
+        {% endif %}
 
         <div class="section">
             <div class="section-title">Add User</div>
-            <form method="POST" action="{{ url_for('add_user') }}" class="add-row">
-                <input type="text" name="new_user" placeholder="Enter new name...">
-                <button type="submit" class="btn btn-success">Add</button>
+            <form method="POST" action="{{ url_for('add_user') }}" class="add-col">
+                <input type="text" name="new_user" placeholder="Full name...">
+                <input type="password" name="new_password" placeholder="Password...">
+                <input type="password" name="confirm_password" placeholder="Confirm password...">
+                <button type="submit" class="btn btn-success">Add User</button>
             </form>
         </div>
 
         <div class="section">
-            <div class="section-title">Remove User</div>
+            <div class="section-title">Manage Users</div>
             <div class="user-list">
                 {% for user in users %}
-                <div class="user-row">
-                    <span>{{ user }}</span>
-                    <form method="POST" action="{{ url_for('delete_user') }}"
-                          onsubmit="return confirm('Remove {{ user }}?');">
+                <div>
+                    <div class="user-row">
+                        <span>{{ user }}</span>
+                        <div style="display:flex; gap:0.4rem;">
+                            {% if user in login_users %}
+                            <button type="button" class="btn btn-warning btn-sm"
+                                    onclick="toggleForm('pw-{{ loop.index }}', 'rm-{{ loop.index }}')">Change PW</button>
+                            {% endif %}
+                            <button type="button" class="btn btn-danger btn-sm"
+                                    onclick="toggleForm('rm-{{ loop.index }}', 'pw-{{ loop.index }}')">Remove</button>
+                        </div>
+                    </div>
+                    {% if user in login_users %}
+                    <form id="pw-{{ loop.index }}" class="pw-form"
+                          method="POST" action="{{ url_for('change_password') }}">
                         <input type="hidden" name="user" value="{{ user }}">
-                        <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                        <input type="password" name="current_password" placeholder="Current password...">
+                        <input type="password" name="new_password" placeholder="New password...">
+                        <input type="password" name="confirm_password" placeholder="Confirm new password...">
+                        <div class="pw-form-btns">
+                            <button type="submit" class="btn btn-primary">Save</button>
+                            <button type="button" class="btn btn-secondary"
+                                    onclick="toggleForm('pw-{{ loop.index }}')">Cancel</button>
+                        </div>
+                    </form>
+                    {% endif %}
+                    <form id="rm-{{ loop.index }}" class="pw-form"
+                          method="POST" action="{{ url_for('delete_user') }}">
+                        <input type="hidden" name="user" value="{{ user }}">
+                        <input type="password" name="password" placeholder="Enter password to confirm removal...">
+                        <div class="pw-form-btns">
+                            <button type="submit" class="btn btn-danger">Confirm Remove</button>
+                            <button type="button" class="btn btn-secondary"
+                                    onclick="toggleForm('rm-{{ loop.index }}')">Cancel</button>
+                        </div>
                     </form>
                 </div>
                 {% endfor %}
             </div>
         </div>
     </div>
+    <script>
+        function toggleForm(openId, closeId) {
+            if (closeId) {
+                var other = document.getElementById(closeId);
+                if (other) { other.style.display = 'none'; other.reset(); }
+            }
+            var form = document.getElementById(openId);
+            if (!form) return;
+            if (form.style.display === 'flex') {
+                form.style.display = 'none';
+                form.reset();
+            } else {
+                form.style.display = 'flex';
+            }
+        }
+    </script>
 </body>
 </html>

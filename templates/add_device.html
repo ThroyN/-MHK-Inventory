@@ -39,16 +39,6 @@
             </div>
 
             <div class="form-group">
-                <label>Island</label>
-                <select name="island">
-                    <option value="">Select island...</option>
-                    {% for island in all_islands %}
-                        <option value="{{ island }}">{{ island }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-group">
                 <label>Location Code <span class="required">*</span></label>
                 <select name="location_code" required id="location-select">
                     <option value="">Select location...</option>
