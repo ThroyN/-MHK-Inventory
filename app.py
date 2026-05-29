@@ -162,7 +162,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             name          TEXT UNIQUE NOT NULL,
-            password_hash TEXT DEFAULT ''
+            password_hash TEXT DEFAULT '',
+            is_admin      INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS device_types (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,6 +187,8 @@ def init_db():
     user_cols = [row[1] for row in conn.execute('PRAGMA table_info(users)').fetchall()]
     if 'password_hash' not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
+    if 'is_admin' not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
     conn.commit()
     conn.close()
 
@@ -339,10 +342,6 @@ def save_tickets(tickets):
     finally:
         conn.close()
 
-def generate_id(items):
-    if not items:
-        return 1
-    return max(item.get('id', 0) for item in items) + 1
 
 def load_history():
     conn = get_db()
@@ -497,12 +496,14 @@ def require_user():
 
 @app.route('/select-user', methods=['GET', 'POST'])
 def select_user():
-    users = load_users()
     conn = get_db()
-    login_users = [r['name'] for r in conn.execute(
-        "SELECT name FROM users WHERE password_hash IS NOT NULL AND password_hash != '' ORDER BY id"
-    ).fetchall()]
+    all_rows = conn.execute('SELECT name, password_hash, is_admin FROM users ORDER BY id').fetchall()
     conn.close()
+    users = [r['name'] for r in all_rows]
+    login_users = [r['name'] for r in all_rows if r['password_hash']]
+    admin_users = {r['name'] for r in all_rows if r['is_admin']}
+    current_is_admin = session.get('current_user') in admin_users
+
     if request.method == 'POST':
         chosen = request.form.get('user', '').strip()
         password = request.form.get('password', '')
@@ -518,7 +519,8 @@ def select_user():
             return redirect(url_for('select_user'))
         session['current_user'] = chosen
         return redirect(url_for('index'))
-    return render_template('select_user.html', users=users, login_users=login_users)
+    return render_template('select_user.html', users=users, login_users=login_users,
+                           admin_users=admin_users, current_is_admin=current_is_admin)
 
 @app.route('/add-user', methods=['POST'])
 def add_user():
@@ -537,10 +539,15 @@ def add_user():
     else:
         conn = get_db()
         try:
-            conn.execute('INSERT INTO users (name, password_hash) VALUES (?, ?)',
-                         (new_name, generate_password_hash(password)))
+            count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+            make_admin = 1 if count == 0 else 0
+            conn.execute('INSERT INTO users (name, password_hash, is_admin) VALUES (?, ?, ?)',
+                         (new_name, generate_password_hash(password), make_admin))
             conn.commit()
-            flash(f'User "{new_name}" added.', 'success')
+            if make_admin:
+                flash(f'User "{new_name}" added as admin (first account).', 'success')
+            else:
+                flash(f'User "{new_name}" added.', 'success')
         except sqlite3.IntegrityError:
             conn.rollback()
             flash(f'"{new_name}" already exists.', 'error')
@@ -577,15 +584,48 @@ def change_password():
     current = request.form.get('current_password', '')
     new_pw = request.form.get('new_password', '').strip()
     confirm = request.form.get('confirm_password', '').strip()
+    is_admin_reset = request.form.get('admin_reset') == '1'
+
     if not name:
         flash('Please select a user.', 'error')
         return redirect(url_for('select_user'))
+
+    # Check if logged-in user is admin
     conn = get_db()
+    actor = session.get('current_user', '')
+    actor_row = conn.execute('SELECT is_admin FROM users WHERE name = ?', (actor,)).fetchone()
+    actor_is_admin = bool(actor_row and actor_row['is_admin'])
+
     row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (name,)).fetchone()
     if not row:
         conn.close()
         flash('User not found.', 'error')
         return redirect(url_for('select_user'))
+
+    # Reject admin_reset attempt from non-admins early with a clear message
+    if is_admin_reset and not actor_is_admin:
+        conn.close()
+        flash('Only admins can reset passwords.', 'error')
+        return redirect(url_for('select_user'))
+
+    # Admin reset: skip current password check
+    if is_admin_reset and actor_is_admin:
+        if not new_pw:
+            conn.close()
+            flash('New password cannot be empty.', 'error')
+            return redirect(url_for('select_user'))
+        if new_pw != confirm:
+            conn.close()
+            flash('New passwords do not match.', 'error')
+            return redirect(url_for('select_user'))
+        conn.execute('UPDATE users SET password_hash = ? WHERE name = ?',
+                     (generate_password_hash(new_pw), name))
+        conn.commit()
+        conn.close()
+        flash(f'Password reset for "{name}".', 'success')
+        return redirect(url_for('select_user'))
+
+    # Normal change: requires current password
     if not check_password_hash(row['password_hash'], current):
         conn.close()
         flash('Current password is incorrect.', 'error')
@@ -607,6 +647,49 @@ def change_password():
     conn.commit()
     conn.close()
     flash(f'Password updated for "{name}".', 'success')
+    return redirect(url_for('select_user'))
+
+@app.route('/set-admin', methods=['POST'])
+def set_admin():
+    actor = session.get('current_user', '')
+    conn = get_db()
+    actor_row = conn.execute('SELECT is_admin FROM users WHERE name = ?', (actor,)).fetchone()
+    if not actor_row or not actor_row['is_admin']:
+        conn.close()
+        flash('Only admins can change admin status.', 'error')
+        return redirect(url_for('select_user'))
+    name = request.form.get('user', '').strip()
+    try:
+        make_admin = int(request.form.get('is_admin', '0'))
+        if make_admin not in (0, 1):
+            raise ValueError
+    except ValueError:
+        conn.close()
+        flash('Invalid request.', 'error')
+        return redirect(url_for('select_user'))
+    if not name:
+        conn.close()
+        flash('Invalid request.', 'error')
+        return redirect(url_for('select_user'))
+    # Prevent removing own admin if last admin — wrap in transaction to avoid TOCTOU
+    conn.execute('BEGIN IMMEDIATE')
+    if name == actor and make_admin == 0:
+        admin_count = conn.execute('SELECT COUNT(*) FROM users WHERE is_admin = 1').fetchone()[0]
+        if admin_count <= 1:
+            conn.rollback()
+            conn.close()
+            flash('Cannot remove admin — you are the only admin.', 'error')
+            return redirect(url_for('select_user'))
+    result = conn.execute('UPDATE users SET is_admin = ? WHERE name = ?', (make_admin, name))
+    if result.rowcount == 0:
+        conn.rollback()
+        conn.close()
+        flash('User not found.', 'error')
+        return redirect(url_for('select_user'))
+    conn.commit()
+    conn.close()
+    label = 'granted admin to' if make_admin else 'removed admin from'
+    flash(f'Successfully {label} "{name}".', 'success')
     return redirect(url_for('select_user'))
 
 @app.route('/logout')
@@ -1556,9 +1639,6 @@ def _process_rows(rows):
         })
         imported += 1
 
-    if len(saved_types) > original_type_count:
-        save_device_types(saved_types)
-
     if new_devices:
         conn = get_db()
         try:
@@ -1579,6 +1659,9 @@ def _process_rows(rows):
             raise
         finally:
             conn.close()
+
+    if len(saved_types) > original_type_count:
+        save_device_types(saved_types)
 
     return imported, skipped, skip_reasons
 

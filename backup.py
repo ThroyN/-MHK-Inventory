@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timedelta
 
 DB_FILE     = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'inventory.db')
-BACKUP_DIR  = r'C:\Users\MGR\OneDrive - Mental Health Kokua\MHK-Inventory-Backups'
+BACKUP_DIR  = r'C:\Users\MGR\Mhk.Inventory.Backups\OneDrive - Mental Health Kokua\MHK_Shared\Mhk.Inventory.DataBase'
 KEEP_DAYS   = 7
 
 def run_backup():

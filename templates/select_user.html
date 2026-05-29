@@ -171,17 +171,52 @@
                 {% for user in users %}
                 <div>
                     <div class="user-row">
-                        <span>{{ user }}</span>
+                        <span>
+                            {{ user }}
+                            {% if user in admin_users %}
+                            <span style="font-size:0.75rem; background:#3498db; color:white; padding:0.1rem 0.45rem; border-radius:10px; margin-left:0.4rem;">Admin</span>
+                            {% endif %}
+                        </span>
                         <div style="display:flex; gap:0.4rem;">
-                            {% if user in login_users %}
-                            <button type="button" class="btn btn-warning btn-sm"
-                                    onclick="toggleForm('pw-{{ loop.index }}', 'rm-{{ loop.index }}')">Change PW</button>
+                            {% if current_is_admin and user != session.current_user %}
+                                <button type="button" class="btn btn-warning btn-sm"
+                                        onclick="toggleForm('reset-{{ loop.index }}', 'rm-{{ loop.index }}')">Reset PW</button>
+                                {% if user in admin_users %}
+                                <form method="POST" action="{{ url_for('set_admin') }}" style="margin:0;">
+                                    <input type="hidden" name="user" value="{{ user }}">
+                                    <input type="hidden" name="is_admin" value="0">
+                                    <button type="submit" class="btn btn-secondary btn-sm">Remove Admin</button>
+                                </form>
+                                {% else %}
+                                <form method="POST" action="{{ url_for('set_admin') }}" style="margin:0;">
+                                    <input type="hidden" name="user" value="{{ user }}">
+                                    <input type="hidden" name="is_admin" value="1">
+                                    <button type="submit" class="btn btn-primary btn-sm">Make Admin</button>
+                                </form>
+                                {% endif %}
+                            {% elif user in login_users %}
+                                <button type="button" class="btn btn-warning btn-sm"
+                                        onclick="toggleForm('pw-{{ loop.index }}', 'rm-{{ loop.index }}')">Change PW</button>
                             {% endif %}
                             <button type="button" class="btn btn-danger btn-sm"
-                                    onclick="toggleForm('rm-{{ loop.index }}', 'pw-{{ loop.index }}')">Remove</button>
+                                    onclick="toggleForm('rm-{{ loop.index }}', 'pw-{{ loop.index }}', 'reset-{{ loop.index }}')">Remove</button>
                         </div>
                     </div>
-                    {% if user in login_users %}
+
+                    {% if current_is_admin and user != session.current_user %}
+                    <form id="reset-{{ loop.index }}" class="pw-form"
+                          method="POST" action="{{ url_for('change_password') }}">
+                        <input type="hidden" name="user" value="{{ user }}">
+                        <input type="hidden" name="admin_reset" value="1">
+                        <input type="password" name="new_password" placeholder="New password...">
+                        <input type="password" name="confirm_password" placeholder="Confirm new password...">
+                        <div class="pw-form-btns">
+                            <button type="submit" class="btn btn-warning">Reset Password</button>
+                            <button type="button" class="btn btn-secondary"
+                                    onclick="toggleForm('reset-{{ loop.index }}')">Cancel</button>
+                        </div>
+                    </form>
+                    {% elif user in login_users %}
                     <form id="pw-{{ loop.index }}" class="pw-form"
                           method="POST" action="{{ url_for('change_password') }}">
                         <input type="hidden" name="user" value="{{ user }}">
@@ -195,6 +230,7 @@
                         </div>
                     </form>
                     {% endif %}
+
                     <form id="rm-{{ loop.index }}" class="pw-form"
                           method="POST" action="{{ url_for('delete_user') }}">
                         <input type="hidden" name="user" value="{{ user }}">
@@ -212,11 +248,10 @@
         {% endif %}
     </div>
     <script>
-        function toggleForm(openId, closeId) {
-            if (closeId) {
-                var other = document.getElementById(closeId);
-                if (other) { other.style.display = 'none'; other.reset(); }
-            }
+        function toggleForm(openId, closeId, closeId2) {
+            [closeId, closeId2].forEach(function(id) {
+                if (id) { var el = document.getElementById(id); if (el) { el.style.display = 'none'; el.reset(); } }
+            });
             var form = document.getElementById(openId);
             if (!form) return;
             if (form.style.display === 'flex') {
