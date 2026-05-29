@@ -381,6 +381,13 @@
                 </li>
                 <li><a href="{{ url_for('logout') }}" style="opacity: 0.75; font-size: 0.9rem;">Switch User</a></li>
                 <li><a href="{{ url_for('select_user') }}#add-user" style="opacity: 0.75; font-size: 0.9rem;">+ Add User</a></li>
+                {% if session.is_admin %}
+                <li>
+                    <form method="POST" action="{{ url_for('force_backup') }}" style="margin:0;">
+                        <button type="submit" style="background:none; border:none; color:white; opacity:0.75; font-size:0.9rem; cursor:pointer; padding:0; font-family:inherit; font-weight:500;">💾 Backup Now</button>
+                    </form>
+                </li>
+                {% endif %}
                 {% endif %}
             </ul>
         </div>

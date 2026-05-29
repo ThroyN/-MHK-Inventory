@@ -11,6 +11,7 @@ import sqlite3
 import tempfile
 import openpyxl
 from openpyxl.styles import Font
+from backup import run_backup, BACKUP_DIR
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -518,6 +519,7 @@ def select_user():
             flash('Incorrect password.', 'error')
             return redirect(url_for('select_user'))
         session['current_user'] = chosen
+        session['is_admin'] = chosen in admin_users
         return redirect(url_for('index'))
     return render_template('select_user.html', users=users, login_users=login_users,
                            admin_users=admin_users, current_is_admin=current_is_admin)
@@ -688,13 +690,32 @@ def set_admin():
         return redirect(url_for('select_user'))
     conn.commit()
     conn.close()
+    if name == actor:
+        session['is_admin'] = bool(make_admin)
     label = 'granted admin to' if make_admin else 'removed admin from'
     flash(f'Successfully {label} "{name}".', 'success')
     return redirect(url_for('select_user'))
 
+@app.route('/force-backup', methods=['POST'])
+def force_backup():
+    actor = session.get('current_user', '')
+    conn = get_db()
+    row = conn.execute('SELECT is_admin FROM users WHERE name = ?', (actor,)).fetchone()
+    conn.close()
+    if not row or not row['is_admin']:
+        flash('Only admins can run a manual backup.', 'error')
+        return redirect(request.referrer or url_for('index'))
+    try:
+        run_backup()
+        flash(f'Backup saved to {BACKUP_DIR}', 'success')
+    except Exception as e:
+        flash(f'Backup failed: {e}', 'error')
+    return redirect(request.referrer or url_for('index'))
+
 @app.route('/logout')
 def logout():
     session.pop('current_user', None)
+    session.pop('is_admin', None)
     return redirect(url_for('select_user'))
 
 # Routes
@@ -981,7 +1002,7 @@ def add_device():
             'source': 'added'
         }
         conn = get_db()
-        conn.execute('''INSERT INTO inventory
+        cur = conn.execute('''INSERT INTO inventory
             (device_type, model, serial_number, assigned_user, password,
              purchase_date, condition, location_code, island, phone, notes,
              archived, added_at, updated_at, source)
@@ -992,7 +1013,7 @@ def add_device():
             new_device['phone'], new_device['notes'],
             new_device['added_at'], new_device['updated_at'], new_device['source']
         ))
-        new_device['id'] = conn.lastrowid
+        new_device['id'] = cur.lastrowid
         conn.commit()
         conn.close()
         log_history('Added', new_device)
@@ -1110,7 +1131,7 @@ def mark_tbd(device_id):
         try:
             conn.execute('BEGIN')
             conn.execute('UPDATE inventory SET archived=1, archived_at=? WHERE id=?', (now, device_id))
-            conn.execute('''INSERT INTO inventory
+            cur = conn.execute('''INSERT INTO inventory
                 (device_type, model, serial_number, assigned_user, password,
                  purchase_date, condition, location_code, island, phone, notes,
                  archived, added_at, updated_at, source)
@@ -1120,7 +1141,7 @@ def mark_tbd(device_id):
                 device['location_code'], device['island'], 'TBD', device['notes'],
                 now, '', device.get('source', 'added')
             ))
-            new_id = conn.lastrowid
+            new_id = cur.lastrowid
             conn.commit()
         except Exception:
             conn.rollback()
@@ -1251,16 +1272,18 @@ def undo_history(history_id):
                 if field in EDITABLE and 'from' in diff:
                     set_parts.append(f'{field} = ?')
                     values.append(diff['from'])
-            conn = get_db()
-            if set_parts:
+            if not set_parts:
+                flash('No editable fields to revert.', 'error')
+            else:
                 values.append(device_id)
+                conn = get_db()
                 conn.execute(f'UPDATE inventory SET {", ".join(set_parts)} WHERE id=?', values)
-            conn.execute('DELETE FROM history WHERE id=?', (history_id,))
-            conn.commit()
-            conn.close()
-            device = _get_device(device_id)
-            log_history('Undone: Edited', device or {'id': device_id, 'model': entry.get('model', '')})
-            flash(f'Undone: reverted edit on {entry.get("model")}.', 'success')
+                conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+                conn.commit()
+                conn.close()
+                device = _get_device(device_id)
+                log_history('Undone: Edited', device or {'id': device_id, 'model': entry.get('model', '')})
+                flash(f'Undone: reverted edit on {entry.get("model")}.', 'success')
         else:
             flash('No changes to revert or device not found.', 'error')
 
@@ -1271,7 +1294,7 @@ def undo_history(history_id):
             conn = get_db()
             try:
                 conn.execute('BEGIN')
-                conn.execute('''INSERT INTO inventory
+                cur = conn.execute('''INSERT INTO inventory
                     (device_type, model, serial_number, assigned_user, password,
                      purchase_date, condition, location_code, island, phone, notes,
                      archived, archived_at, added_at, updated_at, source)
@@ -1284,7 +1307,7 @@ def undo_history(history_id):
                     snapshot.get('archived_at', ''), snapshot.get('added_at', ''),
                     snapshot.get('updated_at', ''), snapshot.get('source', 'added')
                 ))
-                new_id = conn.lastrowid
+                new_id = cur.lastrowid
                 conn.execute('DELETE FROM history WHERE id=?', (history_id,))
                 conn.commit()
             except Exception:
@@ -1416,15 +1439,20 @@ def add_ticket():
 
         now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
         conn = get_db()
-        conn.execute('''INSERT INTO tickets
-            (title, description, category, priority, status, submitted_by, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?)''', (
-            title, request.form.get('description', ''), category,
-            request.form.get('priority', 'Medium'), 'Open', submitted_by, now, now
-        ))
-        ticket_id = conn.lastrowid
-        conn.commit()
-        conn.close()
+        try:
+            cur = conn.execute('''INSERT INTO tickets
+                (title, description, category, priority, status, submitted_by, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?)''', (
+                title, request.form.get('description', ''), category,
+                request.form.get('priority', 'Medium'), 'Open', submitted_by, now, now
+            ))
+            ticket_id = cur.lastrowid
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         flash(f'Ticket #{ticket_id} created successfully!', 'success')
         return redirect(url_for('tickets_list'))
     
@@ -1453,10 +1481,15 @@ def update_ticket_status(ticket_id):
         flash('Invalid status value.', 'error')
         return redirect(url_for('view_ticket', ticket_id=ticket_id))
     conn = get_db()
-    result = conn.execute('UPDATE tickets SET status=?, updated_at=? WHERE id=?',
-                          (new_status, datetime.now().strftime('%m-%d-%Y %H:%M:%S'), ticket_id))
-    conn.commit()
-    conn.close()
+    try:
+        result = conn.execute('UPDATE tickets SET status=?, updated_at=? WHERE id=?',
+                              (new_status, datetime.now().strftime('%m-%d-%Y %H:%M:%S'), ticket_id))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     if result.rowcount:
         flash(f'Ticket #{ticket_id} status updated to {new_status}!', 'success')
     else:
@@ -1488,17 +1521,20 @@ def _normalize_date(date_str):
     s = date_str.strip()
     for fmt in (
         '%m-%d-%Y',    # already correct: 03-07-2030
-        '%m/%d/%y',    # 3/7/30  →  2-digit year (00-68 = 2000-2068)
+        '%m/%d/%y',    # 3/7/70  →  2070 (forced to 2000s)
         '%m/%d/%Y',    # 3/7/2030
         '%Y-%m-%d',    # 2030-03-07  (ISO / Excel)
-        '%m-%d-%y',    # 03-07-30
+        '%m-%d-%y',    # 03-07-70  →  2070 (forced to 2000s)
         '%B %d, %Y',   # January 15, 2030
         '%b %d, %Y',   # Jan 15, 2030
         '%B %d %Y',    # January 15 2030
         '%b %d %Y',    # Jan 15 2030
     ):
         try:
-            return datetime.strptime(s, fmt).strftime('%m-%d-%Y')
+            parsed = datetime.strptime(s, fmt)
+            if '%y' in fmt and parsed.year < 2000:
+                parsed = parsed.replace(year=parsed.year + 100)
+            return parsed.strftime('%m-%d-%Y')
         except ValueError:
             continue
     return s  # unrecognised — keep as-is

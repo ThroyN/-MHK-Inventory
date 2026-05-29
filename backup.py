@@ -4,7 +4,6 @@ Run via Windows Task Scheduler — see README or ask Claude for setup steps.
 """
 import sqlite3
 import os
-import sys
 from datetime import datetime, timedelta
 
 DB_FILE     = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'inventory.db')
@@ -13,8 +12,7 @@ KEEP_DAYS   = 7
 
 def run_backup():
     if not os.path.exists(DB_FILE):
-        print(f'ERROR: database not found at {DB_FILE}')
-        sys.exit(1)
+        raise RuntimeError(f'Database not found at {DB_FILE}')
 
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
