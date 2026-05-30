@@ -62,8 +62,13 @@
                     {% for location, count in devices_by_location.items() %}
                     <tr style="cursor:pointer;" onclick="window.location='{{ url_for('inventory_list') }}?location={{ location|urlencode }}&archive_filter={{ archive_filter }}'"
                         onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor=''">
-                        <td>{{ location }}</td>
-                        <td style="text-align: right;"><strong>{{ count }}</strong></td>
+                        <td>
+                            <strong>{{ location }}</strong>
+                            {% if location_addresses.get(location) %}
+                                <div style="font-size:0.78rem; color:#7f8c8d; margin-top:0.15rem;">{{ location_addresses[location] }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right; vertical-align: top; padding-top: 0.85rem;"><strong>{{ count }}</strong></td>
                     </tr>
                     {% endfor %}
                 </tbody>

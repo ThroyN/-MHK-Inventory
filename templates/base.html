@@ -344,6 +344,51 @@
             opacity: 0.95;
         }
 
+        /* ── Date-picker calendar ─────────────────────────────────────────── */
+        .datepicker-wrap { position: relative; display: block; }
+        .datepicker-wrap input { padding-right: 2.4rem !important; }
+        .datepicker-icon {
+            position: absolute; right: 0.65rem; top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer; font-size: 1.1rem; user-select: none; line-height: 1;
+        }
+        .cal-popup {
+            position: absolute; top: calc(100% + 5px); left: 0; z-index: 2000;
+            background: white; border: 1px solid #ddd; border-radius: 10px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.15); width: 282px;
+            padding: 0.85rem; display: none;
+        }
+        .cal-popup.open { display: block; }
+        .cal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        .cal-nav {
+            background: none; border: none; cursor: pointer; font-size: 1.3rem;
+            line-height: 1; padding: 0.2rem 0.5rem; border-radius: 5px;
+            color: #2c3e50; transition: background 0.15s;
+        }
+        .cal-nav:hover { background: #f0f4f8; }
+        .cal-title { font-weight: 600; color: #2c3e50; font-size: 0.95rem; }
+        .cal-year-select {
+            width: 100%; border: 1px solid #ddd; border-radius: 6px;
+            padding: 0.3rem 0.5rem; font-size: 0.88rem; margin-bottom: 0.55rem;
+            color: #2c3e50; background: #f8f9fa; cursor: pointer;
+        }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .cal-dow {
+            text-align: center; font-size: 0.72rem; font-weight: 700;
+            color: #95a5a6; padding: 0.25rem 0; text-transform: uppercase;
+        }
+        .cal-day {
+            text-align: center; padding: 0.38rem 0; border-radius: 5px;
+            cursor: pointer; font-size: 0.88rem; color: #2c3e50; transition: background 0.12s, color 0.12s;
+        }
+        .cal-day:hover:not(.other-month) { background: #3498db; color: white; }
+        .cal-day.today { background: #e8f4fd; font-weight: 700; color: #2980b9; }
+        .cal-day.selected { background: #3498db !important; color: white !important; font-weight: 700; border-radius: 50%; }
+        .cal-day.other-month { color: #d0d0d0; cursor: default; }
+
         @media (max-width: 768px) {
             .navbar-content {
                 flex-direction: column;
@@ -442,6 +487,129 @@
         }
         updateClock();
         setInterval(updateClock, 1000);
+    </script>
+    <script>
+    (function () {
+        var MONTHS = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+        var DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+        function pad(n){ return String(n).padStart(2,'0'); }
+
+        function parseInputDate(val) {
+            var m = val && val.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+            return m ? new Date(+m[3], +m[1]-1, +m[2]) : null;
+        }
+
+        function initDatepicker(input) {
+            var wrap = document.createElement('div');
+            wrap.className = 'datepicker-wrap';
+            input.parentNode.insertBefore(wrap, input);
+            wrap.appendChild(input);
+
+            var icon = document.createElement('span');
+            icon.className = 'datepicker-icon';
+            icon.textContent = '📅';
+            icon.title = 'Pick a date';
+            wrap.appendChild(icon);
+
+            var popup = document.createElement('div');
+            popup.className = 'cal-popup';
+            wrap.appendChild(popup);
+
+            var today = new Date();
+            var sel   = parseInputDate(input.value);
+            var cur   = sel ? new Date(sel) : new Date(today);
+
+            function render() {
+                var yr  = cur.getFullYear();
+                var mo  = cur.getMonth();
+
+                var yearOpts = '';
+                for (var y = today.getFullYear() - 5; y <= today.getFullYear() + 25; y++) {
+                    yearOpts += '<option value="'+y+'"'+(y===yr?' selected':'')+'>'+y+'</option>';
+                }
+
+                var html = '<div class="cal-header">'
+                    + '<button type="button" class="cal-nav" data-dir="-1">&#8249;</button>'
+                    + '<span class="cal-title">'+MONTHS[mo]+'</span>'
+                    + '<button type="button" class="cal-nav" data-dir="1">&#8250;</button>'
+                    + '</div>'
+                    + '<select class="cal-year-select">'+yearOpts+'</select>'
+                    + '<div class="cal-grid">';
+
+                DAYS.forEach(function(d){ html += '<div class="cal-dow">'+d+'</div>'; });
+
+                var firstDow    = new Date(yr, mo, 1).getDay();
+                var daysInMo    = new Date(yr, mo+1, 0).getDate();
+                var daysInPrev  = new Date(yr, mo, 0).getDate();
+
+                for (var i = firstDow-1; i >= 0; i--)
+                    html += '<div class="cal-day other-month">'+(daysInPrev-i)+'</div>';
+
+                for (var d = 1; d <= daysInMo; d++) {
+                    var cls = 'cal-day';
+                    if (today.getFullYear()===yr && today.getMonth()===mo && today.getDate()===d)
+                        cls += ' today';
+                    if (sel && sel.getFullYear()===yr && sel.getMonth()===mo && sel.getDate()===d)
+                        cls += ' selected';
+                    html += '<div class="'+cls+'" data-day="'+d+'">'+d+'</div>';
+                }
+
+                var tail = (firstDow + daysInMo) % 7;
+                if (tail) for (var n = 1; n <= 7-tail; n++)
+                    html += '<div class="cal-day other-month">'+n+'</div>';
+
+                html += '</div>';
+                popup.innerHTML = html;
+
+                popup.querySelectorAll('.cal-nav').forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        cur.setMonth(cur.getMonth() + parseInt(this.getAttribute('data-dir')));
+                        render();
+                    });
+                });
+
+                popup.querySelector('.cal-year-select').addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    cur.setFullYear(parseInt(this.value));
+                    render();
+                });
+
+                popup.querySelectorAll('.cal-day[data-day]').forEach(function(el) {
+                    el.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        sel = new Date(cur.getFullYear(), cur.getMonth(), parseInt(this.getAttribute('data-day')));
+                        input.value = pad(sel.getMonth()+1) + '-' + pad(sel.getDate()) + '-' + sel.getFullYear();
+                        popup.classList.remove('open');
+                    });
+                });
+            }
+
+            function openPicker() {
+                sel = parseInputDate(input.value);
+                cur = sel ? new Date(sel) : new Date(today);
+                render();
+                popup.classList.add('open');
+            }
+
+            icon.addEventListener('click', function(e) {
+                e.stopPropagation();
+                popup.classList.contains('open') ? popup.classList.remove('open') : openPicker();
+            });
+
+            popup.addEventListener('click', function(e) { e.stopPropagation(); });
+        }
+
+        document.addEventListener('click', function() {
+            document.querySelectorAll('.cal-popup.open').forEach(function(p){
+                p.classList.remove('open');
+            });
+        });
+
+        document.querySelectorAll('input[name="purchase_date"]').forEach(initDatepicker);
+    })();
     </script>
 </body>
 </html>

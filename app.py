@@ -53,6 +53,73 @@ LOCATION_CODES = {
     '999': 'Mobile/Field Device'
 }
 
+LOCATION_ADDRESSES = {
+    'Ahukini St':                        '759 Ahukini St, Honolulu, HI 96825',
+    'Akahi Lihue admin':                 '3205 Akahi St, Lihue, HI 96766',
+    'Apelila':                           '5135 Apelila St, Kapaa, HI 96746',
+    'Apuakea Pl':                        '45-634 Apuakea Pl, Kaneohe, HI 96744',
+    'Aukoi':                             '2895 Aukoi St, Lihue, HI 96766',
+    'Big Island Residential, Inc./Alanoe': '75-5750 Alanoe St, Kailua-Kona 96740',
+    'Dominis House':                     '1316 Dominis St, Honolulu, HI 96822',
+    'Hale Amau':                         '139 Amau Rd, Hilo, HI 96720',
+    'Hale Imua':                         '45-710 Keaahala Rd #42, Kaneohe, HI 96744',
+    'Hale Kapili':                       '138 Central Ave, Wailuku, HI 96793',
+    'Hale Kokua Kai (Niolo St)':         '91-1001 Niolo St, Ewa Beach, HI 96706',
+    'Hale Malie (Punawai St)':           '46-269 Punawai St, Kaneohe, HI 96744',
+    'Hale Noho (Awapapa Pl)':            '45-545 Awapapa Pl, Kaneohe, HI 96744',
+    'Hilo Case Management':              '190 Keawe St, Ste 212, Hilo, HI 96720',
+    'Hilo Hale':                         '208 Wainaku St, Hilo, HI 96720',
+    'Iao House':                         '503 Ua Place, Wailuku, HI 96793',
+    'Iwilei Admin Office':               '680 Iwilei Rd Ste 600, Honolulu, HI 96817',
+    'Iwilei Kauhale':                    '866 Iwilei Rd, Honolulu, HI 96817',
+    'Kalani St':                         '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / ?':                     '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Allen':                 '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Ann Ho':                '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Babbitt':               '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Chris':                 '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Dr. Bikle':             '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Maika':                 '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Spare Laptop #1':       '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Spare Laptop #2':       '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani St / Spare Laptop #3':       '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    "Kalani St/ Kristy's":               '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kalani ST/CM':                      '75-166 Kalani St Ste 103, Kailua-Kona 96740',
+    'Kaulana St':                        '425 Kaulana St, Kahului, HI 96732',
+    'Kealapua':                          '74-5035 Kealapua St, Kailua-Kona 96740',
+    'Keolu Dr':                          '905 Keolu Dr, Kailua, HI 96734',
+    'Kinau A':                           '1304 Kinau St, Honolulu, HI 96814',
+    'Kinau B':                           '1304 Kinau St, Honolulu, HI 96814',
+    'Ko Kakou Hale (Duncan Dr)':         '45-616 Duncan Dr, Kaneohe, HI 96744',
+    'Kona Apartments':                   '75-5758 Alahou St, Kailua-Kona 96740',
+    'Kona Kokua Housing Inc.':           "75-187 Alaka'i St, Kailua-Kona 96740",
+    'Koukalaka':                         '6330 Koukalaka Pl, Kapaa, HI 96746',
+    'Maealani Pl':                       '94-243 Maealani Pl, Mililani, HI 96789',
+    'Mahani Hale':                       '1731 Mahani Loop, Honolulu, HI 96819',
+    'Market Street':                     '105 Market St #102, Wailuku, HI 96793',
+    'Maui Kokua':                        '456 S. Lanai St, Kahului, HI 96732',
+    'Maui Safe Haven':                   '133 N. Market St, Wailuku, HI 96793',
+    'Maunakea Village':                  '1165 Maunakea St, Honolulu, HI 96817',
+    'Menehune':                          '718-726 Menehune Lane, Honolulu, HI',
+    'Menehune Polly':                    '718-726 Menehune Lane, Honolulu, HI',
+    'Menehune RA':                       '718-726 Menehune Lane, Honolulu, HI',
+    'Menehune SRA':                      '718-726 Menehune Lane, Honolulu, HI',
+    'Pahoa RA':                          '3443 Pahoa Ave, Honolulu, HI 96816',
+    'Pahoa SRA':                         '3443 Pahoa Ave, Honolulu, HI 96816',
+    'Patch Place':                       '140 & 140A Wainaku Ave, Hilo, HI 96720',
+    'Patch Place 8-16 (agency)':         '136 & 136A Wainaku Ave, Hilo, HI 96720',
+    'Pearl City Duplex 1':               '1186 Kuokoa St, Pearl City, HI 96782',
+    'Punawai Rest Stop (Kuwili)':        '431 Kuwili St, Honolulu, HI 96817',
+    'Rooke Ave':                         '2664+A Rooke Ave, Honolulu, HI 96817',
+    'Sierra A House':                    '4510 Sierra Drive, Honolulu, HI 96816',
+    'Sierra B House':                    '4510 Sierra Drive, Honolulu, HI 96816',
+    "Supervisor's Office - Nurse":       '4510 Sierra Drive, Honolulu, HI 96816',
+    "Supervisor's Office - Supervisor":  '4510 Sierra Drive, Honolulu, HI 96816',
+    'Vineyard':                          '2276 Vineyard St, Wailuku, HI 96793',
+    'Wailupe Dr':                        '798 Wailupe Dr, Wailuku, HI 96793',
+    'Wellness House, Inc (Ft. Weaver)':  '91-1030 Fort Weaver Rd, Ewa Beach, HI 96706',
+}
+
 # Device types and ticket categories
 DEVICE_TYPES = ['Laptop', 'Desktop', 'Laptop/Desktop', 'iPhone', 'Android Phone', 'Phone', 'Tablet', 'Monitor', 'Printer', 'Scanner', 'Router', 'Other']
 
@@ -568,7 +635,7 @@ def delete_user():
     conn = get_db()
     row = conn.execute('SELECT password_hash FROM users WHERE name = ?', (name,)).fetchone()
     stored_hash = row['password_hash'] if row else ''
-    if stored_hash and not check_password_hash(stored_hash, password):
+    if not stored_hash or not check_password_hash(stored_hash, password):
         conn.close()
         flash('Incorrect password. User not removed.', 'error')
         return redirect(url_for('select_user'))
@@ -769,6 +836,7 @@ def index():
     return render_template('index.html',
                          total_devices=total_devices,
                          devices_by_location=devices_by_location,
+                         location_addresses=LOCATION_ADDRESSES,
                          total_open_tickets=total_open_tickets,
                          all_islands=all_islands,
                          selected_island=selected_island,
@@ -1094,8 +1162,10 @@ def edit_device(device_id):
 def delete_device(device_id):
     """Delete a device from inventory"""
     device = _get_device(device_id)
-    if device:
-        log_history('Deleted', device)
+    if not device:
+        flash('Device not found.', 'error')
+        return redirect(url_for('inventory_list'))
+    log_history('Deleted', device)
     conn = get_db()
     conn.execute('DELETE FROM inventory WHERE id=?', (device_id,))
     conn.commit()
@@ -1109,13 +1179,30 @@ def archive_device(device_id):
     device = _get_device(device_id)
     if device:
         now = datetime.now().strftime('%m-%d-%Y %H:%M:%S')
-        conn = get_db()
-        conn.execute('UPDATE inventory SET archived=1, archived_at=? WHERE id=?', (now, device_id))
-        conn.commit()
-        conn.close()
         device['archived'] = True
         device['archived_at'] = now
-        log_history('Archived', device)
+        conn = get_db()
+        try:
+            conn.execute('BEGIN')
+            conn.execute('UPDATE inventory SET archived=1, archived_at=? WHERE id=?', (now, device_id))
+            conn.execute('''INSERT INTO history
+                (timestamp,performed_by,action,device_id,device_type,model,
+                 serial_number,location_code,island,assigned_user,changes,device_snapshot)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                now,
+                session.get('current_user', 'Unknown'),
+                'Archived',
+                device.get('id'), device.get('device_type', ''), device.get('model', ''),
+                device.get('serial_number', ''), device.get('location_code', ''),
+                device.get('island', ''), device.get('assigned_user', ''),
+                '{}', json.dumps(copy.deepcopy(device))
+            ))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
         flash(f'Device {device["model"]} archived.', 'success')
     else:
         flash('Device not found.', 'error')
@@ -1265,19 +1352,30 @@ def undo_history(history_id):
     elif action == 'Edited':
         changes = entry.get('changes', {})
         if device_id and changes:
-            EDITABLE = {'device_type', 'model', 'serial_number', 'assigned_user', 'password',
-                        'location_code', 'phone', 'purchase_date', 'condition', 'notes', 'island'}
+            EDITABLE_SQL = {
+                'device_type':   'device_type = ?',
+                'model':         'model = ?',
+                'serial_number': 'serial_number = ?',
+                'assigned_user': 'assigned_user = ?',
+                'password':      'password = ?',
+                'location_code': 'location_code = ?',
+                'phone':         'phone = ?',
+                'purchase_date': 'purchase_date = ?',
+                'condition':     'condition = ?',
+                'notes':         'notes = ?',
+                'island':        'island = ?',
+            }
             set_parts, values = [], []
             for field, diff in changes.items():
-                if field in EDITABLE and 'from' in diff:
-                    set_parts.append(f'{field} = ?')
+                if field in EDITABLE_SQL and 'from' in diff:
+                    set_parts.append(EDITABLE_SQL[field])
                     values.append(diff['from'])
             if not set_parts:
                 flash('No editable fields to revert.', 'error')
             else:
                 values.append(device_id)
                 conn = get_db()
-                conn.execute(f'UPDATE inventory SET {", ".join(set_parts)} WHERE id=?', values)
+                conn.execute('UPDATE inventory SET ' + ', '.join(set_parts) + ' WHERE id=?', values)
                 conn.execute('DELETE FROM history WHERE id=?', (history_id,))
                 conn.commit()
                 conn.close()
@@ -1298,12 +1396,13 @@ def undo_history(history_id):
                     (device_type, model, serial_number, assigned_user, password,
                      purchase_date, condition, location_code, island, phone, notes,
                      archived, archived_at, added_at, updated_at, source)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)''', (
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
                     snapshot.get('device_type', ''), snapshot.get('model', ''),
                     snapshot.get('serial_number', ''), snapshot.get('assigned_user', ''),
                     snapshot.get('password', ''), snapshot.get('purchase_date', ''),
                     snapshot.get('condition', 'Good'), snapshot.get('location_code', ''),
                     snapshot.get('island', ''), snapshot.get('phone', ''), snapshot.get('notes', ''),
+                    1 if snapshot.get('archived') else 0,
                     snapshot.get('archived_at', ''), snapshot.get('added_at', ''),
                     snapshot.get('updated_at', ''), snapshot.get('source', 'added')
                 ))
@@ -1500,10 +1599,13 @@ def update_ticket_status(ticket_id):
 def delete_ticket(ticket_id):
     """Delete a ticket"""
     conn = get_db()
-    conn.execute('DELETE FROM tickets WHERE id=?', (ticket_id,))
+    result = conn.execute('DELETE FROM tickets WHERE id=?', (ticket_id,))
     conn.commit()
     conn.close()
-    flash('Ticket deleted successfully!', 'success')
+    if result.rowcount:
+        flash('Ticket deleted successfully!', 'success')
+    else:
+        flash('Ticket not found.', 'error')
     return redirect(url_for('tickets_list'))
 
 CSV_COLUMNS = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'purchase_date', 'condition', 'location_code', 'island', 'phone', 'notes']
@@ -1792,14 +1894,14 @@ def import_inventory():
         elif filename.endswith('.xlsx'):
             temp_fd, temp_path = tempfile.mkstemp(suffix='.xlsx')
             os.close(temp_fd)
-            file.save(temp_path)
-
             try:
+                file.save(temp_path)
                 wb = openpyxl.load_workbook(temp_path, read_only=True)
                 sheets = wb.sheetnames
                 wb.close()
             except Exception as e:
-                os.remove(temp_path)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
                 flash(f'Failed to read Excel file: {e}', 'error')
                 return redirect(url_for('import_inventory'))
 
