@@ -1649,12 +1649,15 @@ def _island_for_location(location_code):
     if row and row['island']:
         conn.close()
         return row['island']
-    inv_row = conn.execute(
-        "SELECT island FROM inventory WHERE location_code = ? AND island != '' LIMIT 1",
+    rows = conn.execute(
+        "SELECT island FROM inventory WHERE location_code = ? AND island != ''",
         (location_code,)
-    ).fetchone()
+    ).fetchall()
     conn.close()
-    return inv_row['island'] if inv_row else ''
+    if not rows:
+        return ''
+    from collections import Counter
+    return Counter(r['island'] for r in rows).most_common(1)[0][0]
 
 def _build_locations_by_island(inventory=None):
     if inventory is None:
@@ -1666,17 +1669,21 @@ def _build_locations_by_island(inventory=None):
         island = entry.get('island', '').strip()
         if code:
             loc_to_island[code] = island or 'Other'
-    # Inventory data always overrides stored locations when it has a non-empty island
+    # Use majority vote from inventory so one bad record can't override many correct ones
+    from collections import Counter
+    island_votes = {}
     for item in inventory:
         loc = item.get('location_code', '').strip()
         island = item.get('island', '').strip()
-        if loc:
-            if island:
-                # Non-empty island from inventory always wins
-                loc_to_island[loc] = island
-            elif loc not in loc_to_island:
-                # Only fall back to 'Other' if not already mapped
-                loc_to_island[loc] = 'Other'
+        if loc and island:
+            island_votes.setdefault(loc, Counter())[island] += 1
+    for loc, counter in island_votes.items():
+        loc_to_island[loc] = counter.most_common(1)[0][0]
+    # Any location still unseen gets 'Other'
+    for item in inventory:
+        loc = item.get('location_code', '').strip()
+        if loc and loc not in loc_to_island:
+            loc_to_island[loc] = 'Other'
     result = {}
     for loc, island in sorted(loc_to_island.items()):
         result.setdefault(island, []).append(loc)
