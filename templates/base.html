@@ -435,7 +435,7 @@
                 <li>
                     <form method="POST" action="{{ url_for('import_database') }}" enctype="multipart/form-data" style="margin:0;" id="importDbForm">
                         <input type="file" name="db_file" id="importDbFile" accept=".db" style="display:none;"
-                               onchange="if(this.files[0] && confirm('Replace the live database with \"' + this.files[0].name + '\"?\n\nThe current database will be auto-backed up first.')) { this.form.submit(); } else { this.value=''; }">
+                               onchange="showImportConfirm(this)">
                         <button type="button" onclick="document.getElementById('importDbFile').click()"
                                 style="background:none; border:none; color:white; opacity:0.75; font-size:0.9rem; cursor:pointer; padding:0; font-family:inherit; font-weight:500;">
                             📥 Import DB
@@ -451,6 +451,21 @@
             <span>💾 Next backup in <span id="backup-countdown">—</span></span>
         </div>
     </nav>
+
+    <!-- Import DB confirmation banner -->
+    <div id="importConfirmBanner" style="display:none; background:#e67e22; color:white; padding:0.75rem 2rem; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+        <span style="font-weight:600; font-size:0.95rem;">📥 Import <span id="importFileName" style="font-family:monospace;"></span> and replace the live database? <span style="opacity:0.85; font-weight:400;">(Current DB will be auto-backed up first.)</span></span>
+        <div style="display:flex; gap:0.6rem;">
+            <button onclick="document.getElementById('importDbForm').submit()"
+                    style="background:white; color:#e67e22; border:none; border-radius:5px; padding:0.4rem 1rem; font-weight:700; cursor:pointer; font-size:0.9rem;">
+                Yes, Import
+            </button>
+            <button onclick="cancelImport()"
+                    style="background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.5); border-radius:5px; padding:0.4rem 1rem; font-weight:600; cursor:pointer; font-size:0.9rem;">
+                Cancel
+            </button>
+        </div>
+    </div>
 
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -497,6 +512,18 @@
         }
         updateClock();
         setInterval(updateClock, 1000);
+
+        function showImportConfirm(input) {
+            if (!input.files || !input.files[0]) return;
+            document.getElementById('importFileName').textContent = input.files[0].name;
+            document.getElementById('importConfirmBanner').style.display = 'flex';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function cancelImport() {
+            document.getElementById('importConfirmBanner').style.display = 'none';
+            var inp = document.getElementById('importDbFile');
+            if (inp) inp.value = '';
+        }
     </script>
     <script>
     (function () {
