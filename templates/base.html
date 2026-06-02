@@ -432,6 +432,16 @@
                         <button type="submit" style="background:none; border:none; color:white; opacity:0.75; font-size:0.9rem; cursor:pointer; padding:0; font-family:inherit; font-weight:500;">💾 Backup Now</button>
                     </form>
                 </li>
+                <li>
+                    <form method="POST" action="{{ url_for('import_database') }}" enctype="multipart/form-data" style="margin:0;" id="importDbForm">
+                        <input type="file" name="db_file" id="importDbFile" accept=".db" style="display:none;"
+                               onchange="if(this.files[0] && confirm('Replace the live database with \"' + this.files[0].name + '\"?\n\nThe current database will be auto-backed up first.')) { this.form.submit(); } else { this.value=''; }">
+                        <button type="button" onclick="document.getElementById('importDbFile').click()"
+                                style="background:none; border:none; color:white; opacity:0.75; font-size:0.9rem; cursor:pointer; padding:0; font-family:inherit; font-weight:500;">
+                            📥 Import DB
+                        </button>
+                    </form>
+                </li>
                 {% endif %}
                 {% endif %}
             </ul>

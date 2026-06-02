@@ -9,6 +9,7 @@ import io
 import copy
 import sqlite3
 import tempfile
+import shutil
 import openpyxl
 from openpyxl.styles import Font
 from backup import run_backup, BACKUP_DIR
@@ -788,6 +789,61 @@ def force_backup():
     except Exception as e:
         flash(f'Backup failed: {e}', 'error')
     return redirect(request.referrer or url_for('index'))
+
+@app.route('/import-database', methods=['POST'])
+def import_database():
+    actor = session.get('current_user', '')
+    conn = get_db()
+    row = conn.execute('SELECT is_admin FROM users WHERE name = ?', (actor,)).fetchone()
+    conn.close()
+    if not row or not row['is_admin']:
+        flash('Only admins can import a database.', 'error')
+        return redirect(request.referrer or url_for('index'))
+
+    f = request.files.get('db_file')
+    if not f or not f.filename.endswith('.db'):
+        flash('Please upload a valid .db file.', 'error')
+        return redirect(request.referrer or url_for('index'))
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix='.db')
+    try:
+        os.close(tmp_fd)
+        f.save(tmp_path)
+
+        # Validate it's a real SQLite DB containing the inventory table
+        try:
+            test_conn = sqlite3.connect(tmp_path)
+            tables = {r[0] for r in test_conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+            test_conn.close()
+        except Exception:
+            flash('Invalid database file — could not open it.', 'error')
+            return redirect(request.referrer or url_for('index'))
+
+        if 'inventory' not in tables:
+            flash('Invalid database — missing inventory table.', 'error')
+            return redirect(request.referrer or url_for('index'))
+
+        # Auto-backup current DB before replacing it
+        try:
+            run_backup()
+        except Exception:
+            pass  # don't block the import if backup fails
+
+        shutil.copy2(tmp_path, DB_FILE)
+        flash('Database imported successfully.', 'success')
+        return redirect(url_for('index'))
+
+    except Exception as e:
+        flash(f'Import failed: {e}', 'error')
+        return redirect(request.referrer or url_for('index'))
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
 
 @app.route('/logout')
 def logout():
