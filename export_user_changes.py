@@ -40,12 +40,16 @@ def export_for_user(username: str):
 
     print(f"Found {len(device_ids)} device(s) touched by '{username}'.")
 
-    # Load the current state of those devices
-    placeholders = ','.join('?' * len(device_ids))
-    devices = conn.execute(
-        f'SELECT * FROM inventory WHERE id IN ({placeholders})',
-        device_ids
-    ).fetchall()
+    # Load the current state of those devices (chunk to stay under SQLite's 999-variable limit)
+    devices = []
+    chunk_size = 900
+    for i in range(0, len(device_ids), chunk_size):
+        chunk = device_ids[i:i + chunk_size]
+        placeholders = ','.join('?' * len(chunk))
+        devices += conn.execute(
+            f'SELECT * FROM inventory WHERE id IN ({placeholders})',
+            chunk
+        ).fetchall()
     conn.close()
 
     # Build XLSX in the same format as the app's normal export

@@ -694,7 +694,17 @@ def change_password():
         flash(f'Password reset for "{name}".', 'success')
         return redirect(url_for('select_user'))
 
+    # Normal change: non-admins can only change their own password
+    if not actor_is_admin and name != actor:
+        conn.close()
+        flash('You can only change your own password.', 'error')
+        return redirect(url_for('select_user'))
+
     # Normal change: requires current password
+    if not row['password_hash']:
+        conn.close()
+        flash('This account has no password set. Ask an admin to reset it.', 'error')
+        return redirect(url_for('select_user'))
     if not check_password_hash(row['password_hash'], current):
         conn.close()
         flash('Current password is incorrect.', 'error')
@@ -1336,9 +1346,16 @@ def undo_history(history_id):
     # --- Added: delete the device ---
     elif action == 'Added':
         conn = get_db()
-        conn.execute('DELETE FROM inventory WHERE id=?', (device_id,))
-        conn.execute('DELETE FROM history WHERE id=?', (history_id,))
-        conn.commit()
+        try:
+            conn.execute('BEGIN')
+            conn.execute('DELETE FROM inventory WHERE id=?', (device_id,))
+            conn.execute('DELETE FROM history WHERE id=?', (history_id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            conn.close()
+            flash('Undo failed due to a database error.', 'error')
+            return redirect(url_for('history_view'))
         conn.close()
         log_history('Undone: Added', {
             'id': device_id, 'device_type': entry.get('device_type', ''),
