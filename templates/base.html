@@ -452,7 +452,8 @@
         </div>
     </nav>
 
-    <!-- Import DB confirmation banner -->
+    <!-- Import DB confirmation banner (admin only) -->
+    {% if session.is_admin %}
     <div id="importConfirmBanner" style="display:none; background:#e67e22; color:white; padding:0.75rem 2rem; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
         <span style="font-weight:600; font-size:0.95rem;">📥 Import <span id="importFileName" style="font-family:monospace;"></span> and replace the live database? <span style="opacity:0.85; font-weight:400;">(Current DB will be auto-backed up first.)</span></span>
         <div style="display:flex; gap:0.6rem;">
@@ -466,6 +467,7 @@
             </button>
         </div>
     </div>
+    {% endif %}
 
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}

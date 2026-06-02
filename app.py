@@ -813,10 +813,12 @@ def import_database():
         # Validate it's a real SQLite DB containing the inventory table
         try:
             test_conn = sqlite3.connect(tmp_path)
-            tables = {r[0] for r in test_conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()}
-            test_conn.close()
+            try:
+                tables = {r[0] for r in test_conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()}
+            finally:
+                test_conn.close()
         except Exception:
             flash('Invalid database file — could not open it.', 'error')
             return redirect(request.referrer or url_for('index'))
@@ -831,7 +833,18 @@ def import_database():
         except Exception:
             pass  # don't block the import if backup fails
 
-        shutil.copy2(tmp_path, DB_FILE)
+        # Use SQLite backup API — safe with WAL mode and concurrent connections
+        src = sqlite3.connect(tmp_path)
+        dst = sqlite3.connect(DB_FILE)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+
+        # Run schema migrations so older backups get any missing columns
+        init_data_storage()
+
         flash('Database imported successfully.', 'success')
         return redirect(url_for('index'))
 
