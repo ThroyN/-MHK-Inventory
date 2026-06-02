@@ -524,6 +524,7 @@ document.getElementById('locationsModal').addEventListener('click', function(e) 
 function makeSearchFilter(cfg) {
     var activeIdx = -1;
     var selectedVals = new Set(cfg.initial || []);
+    var blurTimer = null;
 
     var inp      = function() { return document.getElementById(cfg.inputId); };
     var clr      = function() { return document.getElementById(cfg.clearId); };
@@ -589,7 +590,7 @@ function makeSearchFilter(cfg) {
         }
         d.innerHTML = hasAny ? html : '<div class="srch-none">No matches found</div>';
         d.querySelectorAll('.srch-item').forEach(function(el) {
-            el.addEventListener('click', function() { toggle(el.dataset.val); });
+            el.addEventListener('click', function(e) { e.stopPropagation(); toggle(el.dataset.val); });
         });
     }
 
@@ -607,15 +608,17 @@ function makeSearchFilter(cfg) {
     }
 
     function toggle(val) {
+        if (blurTimer) { clearTimeout(blurTimer); blurTimer = null; }
         var q = inp().value.trim().toLowerCase();
-        var wasCount = selectedVals.size > 1;
         if (selectedVals.has(val)) { selectedVals.delete(val); }
         else { selectedVals.add(val); }
         updateDisplay();
-        render(wasCount ? '' : q);
+        // Keep the active search query unless the input was showing "N selected"
+        render(/^\d+ selected$/.test(q) ? '' : q);
     }
 
     function clear() {
+        if (blurTimer) { clearTimeout(blurTimer); blurTimer = null; }
         selectedVals.clear();
         updateDisplay();
         drop().classList.remove('open');
@@ -623,7 +626,7 @@ function makeSearchFilter(cfg) {
     }
 
     function blur() {
-        setTimeout(function() { updateDisplay(); }, 150);
+        blurTimer = setTimeout(function() { blurTimer = null; updateDisplay(); }, 150);
     }
 
     function keyNav(e) {
