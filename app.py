@@ -1055,9 +1055,9 @@ def inventory_list():
 
     # Get filter parameters
     search = request.args.get('search', '').lower()
-    device_type = request.args.get('device_type', '')
-    location = request.args.get('location', '')
-    selected_island = request.args.get('island', '')
+    selected_device_types = request.args.getlist('device_type')
+    selected_locations    = request.args.getlist('location')
+    selected_islands      = request.args.getlist('island')
     archive_filter = request.args.get('archive_filter', 'active')  # active | archived | all
 
     # Filter by archive status first
@@ -1068,8 +1068,8 @@ def inventory_list():
     else:
         filtered_inventory = [item for item in inventory if not item.get('archived')]
 
-    if selected_island:
-        filtered_inventory = [item for item in filtered_inventory if item.get('island', '').strip() == selected_island]
+    if selected_islands:
+        filtered_inventory = [item for item in filtered_inventory if item.get('island', '').strip() in selected_islands]
 
     if search:
         filtered_inventory = [
@@ -1080,11 +1080,11 @@ def inventory_list():
                search in item.get('location_code', '').lower()
         ]
 
-    if device_type:
-        filtered_inventory = [item for item in filtered_inventory if item.get('device_type') == device_type]
+    if selected_device_types:
+        filtered_inventory = [item for item in filtered_inventory if item.get('device_type') in selected_device_types]
 
-    if location:
-        filtered_inventory = [item for item in filtered_inventory if item.get('location_code') == location]
+    if selected_locations:
+        filtered_inventory = [item for item in filtered_inventory if item.get('location_code') in selected_locations]
 
     # Add location names to items
     for item in filtered_inventory:
@@ -1112,9 +1112,9 @@ def inventory_list():
                          locations_by_island=locations_by_island,
                          all_islands=all_islands,
                          search=search,
-                         selected_device_type=device_type,
-                         selected_location=location,
-                         selected_island=selected_island,
+                         selected_device_types=selected_device_types,
+                         selected_locations=selected_locations,
+                         selected_islands=selected_islands,
                          archive_filter=archive_filter)
 
 @app.route('/inventory/add', methods=['GET', 'POST'])

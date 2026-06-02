@@ -109,6 +109,7 @@
     .srch-group:first-child { border-top: none; margin-top: 0; }
     .srch-item { padding: 0.5rem 1.2rem; cursor: pointer; font-size: 0.92rem; color: #2c3e50; }
     .srch-item:hover, .srch-item.srch-active { background: #f0f4f8; color: #2980b9; }
+    .srch-item.srch-selected { background: #f0fff4; }
     .srch-none { padding: 0.7rem 1rem; color: #aaa; font-size: 0.88rem; }
 
     /* Active filter chips */
@@ -166,37 +167,46 @@
 
     <div class="srch-wrap" id="dtWrap">
         <input type="text" id="dtInput" placeholder="Search device type..."
-               autocomplete="off" value="{{ selected_device_type }}"
+               autocomplete="off"
+               value="{% if selected_device_types|length == 1 %}{{ selected_device_types[0] }}{% elif selected_device_types|length > 1 %}{{ selected_device_types|length }} selected{% endif %}"
                oninput="dtFilter.filter()" onfocus="dtFilter.open()" onkeydown="dtFilter.keyNav(event)" onblur="dtFilter.blur()">
         <button type="button" class="srch-clear" id="dtClear"
-                onclick="dtFilter.clear()" style="display:{% if selected_device_type %}block{% else %}none{% endif %}">✕</button>
+                onclick="dtFilter.clear()" style="display:{% if selected_device_types %}block{% else %}none{% endif %}">✕</button>
         <button type="button" class="srch-caret" id="dtCaret"
-                onclick="dtFilter.open()" style="display:{% if selected_device_type %}none{% else %}block{% endif %}">▾</button>
-        <input type="hidden" name="device_type" id="dtHidden" value="{{ selected_device_type }}">
+                onclick="dtFilter.open()" style="display:{% if selected_device_types %}none{% else %}block{% endif %}">▾</button>
+        <div id="dtHiddenContainer">
+            {% for t in selected_device_types %}<input type="hidden" name="device_type" value="{{ t }}">{% endfor %}
+        </div>
         <div class="srch-drop" id="dtDrop"></div>
     </div>
 
     <div class="srch-wrap" id="locWrap">
         <input type="text" id="locInput" placeholder="Search location..."
-               autocomplete="off" value="{{ selected_location }}"
+               autocomplete="off"
+               value="{% if selected_locations|length == 1 %}{{ selected_locations[0] }}{% elif selected_locations|length > 1 %}{{ selected_locations|length }} selected{% endif %}"
                oninput="locFilter.filter()" onfocus="locFilter.open()" onkeydown="locFilter.keyNav(event)" onblur="locFilter.blur()">
         <button type="button" class="srch-clear" id="locClear"
-                onclick="locFilter.clear()" style="display:{% if selected_location %}block{% else %}none{% endif %}">✕</button>
+                onclick="locFilter.clear()" style="display:{% if selected_locations %}block{% else %}none{% endif %}">✕</button>
         <button type="button" class="srch-caret" id="locCaret"
-                onclick="locFilter.open()" style="display:{% if selected_location %}none{% else %}block{% endif %}">▾</button>
-        <input type="hidden" name="location" id="locHidden" value="{{ selected_location }}">
+                onclick="locFilter.open()" style="display:{% if selected_locations %}none{% else %}block{% endif %}">▾</button>
+        <div id="locHiddenContainer">
+            {% for l in selected_locations %}<input type="hidden" name="location" value="{{ l }}">{% endfor %}
+        </div>
         <div class="srch-drop" id="locDrop"></div>
     </div>
 
     <div class="srch-wrap" id="islWrap">
         <input type="text" id="islInput" placeholder="Search island..."
-               autocomplete="off" value="{{ selected_island }}"
+               autocomplete="off"
+               value="{% if selected_islands|length == 1 %}{{ selected_islands[0] }}{% elif selected_islands|length > 1 %}{{ selected_islands|length }} selected{% endif %}"
                oninput="islFilter.filter()" onfocus="islFilter.open()" onkeydown="islFilter.keyNav(event)" onblur="islFilter.blur()">
         <button type="button" class="srch-clear" id="islClear"
-                onclick="islFilter.clear()" style="display:{% if selected_island %}block{% else %}none{% endif %}">✕</button>
+                onclick="islFilter.clear()" style="display:{% if selected_islands %}block{% else %}none{% endif %}">✕</button>
         <button type="button" class="srch-caret" id="islCaret"
-                onclick="islFilter.open()" style="display:{% if selected_island %}none{% else %}block{% endif %}">▾</button>
-        <input type="hidden" name="island" id="islHidden" value="{{ selected_island }}">
+                onclick="islFilter.open()" style="display:{% if selected_islands %}none{% else %}block{% endif %}">▾</button>
+        <div id="islHiddenContainer">
+            {% for i in selected_islands %}<input type="hidden" name="island" value="{{ i }}">{% endfor %}
+        </div>
         <div class="srch-drop" id="islDrop"></div>
     </div>
 
@@ -210,32 +220,35 @@
     <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">Clear</a>
 </form>
 
-{% set any_filter = search or selected_device_type or selected_location or selected_island or archive_filter != 'active' %}
+{% set any_filter = search or selected_device_types or selected_locations or selected_islands or archive_filter != 'active' %}
 {% if any_filter %}
 <div class="active-filters">
     <span class="active-filters-label">Active filters:</span>
     {% if search %}
-    <a href="{{ url_for('inventory_list', device_type=selected_device_type, location=selected_location, island=selected_island, archive_filter=archive_filter) }}" class="filter-chip">
+    <a href="{{ url_for('inventory_list', device_type=selected_device_types, location=selected_locations, island=selected_islands, archive_filter=archive_filter) }}" class="filter-chip">
         Search: "{{ search }}" <span class="chip-x">✕</span>
     </a>
     {% endif %}
-    {% if selected_device_type %}
-    <a href="{{ url_for('inventory_list', search=search, location=selected_location, island=selected_island, archive_filter=archive_filter) }}" class="filter-chip">
-        Type: {{ selected_device_type }} <span class="chip-x">✕</span>
+    {% for dt in selected_device_types %}
+    {% set remaining = selected_device_types | reject('equalto', dt) | list %}
+    <a href="{{ url_for('inventory_list', search=search, device_type=remaining, location=selected_locations, island=selected_islands, archive_filter=archive_filter) }}" class="filter-chip">
+        Type: {{ dt }} <span class="chip-x">✕</span>
     </a>
-    {% endif %}
-    {% if selected_location %}
-    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_type, island=selected_island, archive_filter=archive_filter) }}" class="filter-chip">
-        Location: {{ selected_location }} <span class="chip-x">✕</span>
+    {% endfor %}
+    {% for loc in selected_locations %}
+    {% set remaining = selected_locations | reject('equalto', loc) | list %}
+    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_types, location=remaining, island=selected_islands, archive_filter=archive_filter) }}" class="filter-chip">
+        Location: {{ loc }} <span class="chip-x">✕</span>
     </a>
-    {% endif %}
-    {% if selected_island %}
-    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_type, location=selected_location, archive_filter=archive_filter) }}" class="filter-chip">
-        Island: {{ selected_island }} <span class="chip-x">✕</span>
+    {% endfor %}
+    {% for isl in selected_islands %}
+    {% set remaining = selected_islands | reject('equalto', isl) | list %}
+    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_types, location=selected_locations, island=remaining, archive_filter=archive_filter) }}" class="filter-chip">
+        Island: {{ isl }} <span class="chip-x">✕</span>
     </a>
-    {% endif %}
+    {% endfor %}
     {% if archive_filter != 'active' %}
-    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_type, location=selected_location, island=selected_island) }}" class="filter-chip filter-chip-archive">
+    <a href="{{ url_for('inventory_list', search=search, device_type=selected_device_types, location=selected_locations, island=selected_islands) }}" class="filter-chip filter-chip-archive">
         {{ archive_filter | capitalize }} devices <span class="chip-x">✕</span>
     </a>
     {% endif %}
@@ -337,7 +350,7 @@
         </div>
     {% else %}
         <p style="color: #7f8c8d; text-align: center; padding: 2rem;">
-            No devices found. {% if search or selected_device_type or selected_location or selected_island %}Try adjusting your filters.{% else %}Add your first device to get started!{% endif %}
+            No devices found. {% if search or selected_device_types or selected_locations or selected_islands %}Try adjusting your filters.{% else %}Add your first device to get started!{% endif %}
         </p>
     {% endif %}
 </div>
@@ -507,19 +520,49 @@ document.getElementById('locationsModal').addEventListener('click', function(e) 
     if (e.target === this) this.style.display = 'none';
 });
 
-// ── Searchable filter combo boxes ─────────────────────────────────────────────
+// ── Searchable multi-select filter combo boxes ────────────────────────────────
 function makeSearchFilter(cfg) {
     var activeIdx = -1;
-    var inp  = function() { return document.getElementById(cfg.inputId); };
-    var hid  = function() { return document.getElementById(cfg.hiddenId); };
-    var clr  = function() { return document.getElementById(cfg.clearId); };
-    var drop = function() { return document.getElementById(cfg.dropId); };
-    var wrap = function() { return document.getElementById(cfg.wrapId); };
-    var cart = function() { return cfg.caretId ? document.getElementById(cfg.caretId) : null; };
+    var selectedVals = new Set(cfg.initial || []);
+
+    var inp      = function() { return document.getElementById(cfg.inputId); };
+    var clr      = function() { return document.getElementById(cfg.clearId); };
+    var drop     = function() { return document.getElementById(cfg.dropId); };
+    var wrap     = function() { return document.getElementById(cfg.wrapId); };
+    var cart     = function() { return cfg.caretId ? document.getElementById(cfg.caretId) : null; };
+    var hiddenCnt= function() { return document.getElementById(cfg.hiddenContainerId); };
 
     function showCaret(show) { var c = cart(); if (c) c.style.display = show ? 'block' : 'none'; }
-
     function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function updateDisplay() {
+        var cnt = hiddenCnt();
+        if (cnt) {
+            cnt.innerHTML = '';
+            selectedVals.forEach(function(v) {
+                var h = document.createElement('input');
+                h.type = 'hidden'; h.name = cfg.fieldName; h.value = v;
+                cnt.appendChild(h);
+            });
+        }
+        var n = selectedVals.size;
+        if (n === 0) {
+            inp().value = '';
+            clr().style.display = 'none';
+            showCaret(true);
+        } else if (n === 1) {
+            inp().value = Array.from(selectedVals)[0];
+            clr().style.display = 'block';
+            showCaret(false);
+        } else {
+            inp().value = n + ' selected';
+            clr().style.display = 'block';
+            showCaret(false);
+        }
+    }
+
+    var CHECK = '<span style="color:#27ae60;font-weight:700;margin-right:5px;flex-shrink:0;">✓</span>';
+    var BLANK = '<span style="display:inline-block;width:1em;margin-right:5px;flex-shrink:0;"></span>';
 
     function render(q) {
         var d = drop(); var html = ''; var hasAny = false;
@@ -529,60 +572,63 @@ function makeSearchFilter(cfg) {
                 if (hits.length) {
                     hasAny = true;
                     html += '<div class="srch-group">' + esc(group) + '</div>';
-                    hits.forEach(function(v) { html += '<div class="srch-item" data-val="' + esc(v) + '">' + esc(v) + '</div>'; });
+                    hits.forEach(function(v) {
+                        var sel = selectedVals.has(v);
+                        html += '<div class="srch-item' + (sel ? ' srch-selected' : '') + '" data-val="' + esc(v) + '" style="display:flex;align-items:center;">'
+                              + (sel ? CHECK : BLANK) + esc(v) + '</div>';
+                    });
                 }
             });
         } else {
             cfg.data.filter(function(v) { return !q || v.toLowerCase().includes(q); }).forEach(function(v) {
                 hasAny = true;
-                html += '<div class="srch-item" data-val="' + esc(v) + '">' + esc(v) + '</div>';
+                var sel = selectedVals.has(v);
+                html += '<div class="srch-item' + (sel ? ' srch-selected' : '') + '" data-val="' + esc(v) + '" style="display:flex;align-items:center;">'
+                      + (sel ? CHECK : BLANK) + esc(v) + '</div>';
             });
         }
         d.innerHTML = hasAny ? html : '<div class="srch-none">No matches found</div>';
         d.querySelectorAll('.srch-item').forEach(function(el) {
-            el.addEventListener('click', function() { select(el.dataset.val); });
+            el.addEventListener('click', function() { toggle(el.dataset.val); });
         });
     }
 
-    function open() { render(''); drop().classList.add('open'); }
+    function open() {
+        if (selectedVals.size > 1) inp().value = '';
+        render('');
+        drop().classList.add('open');
+    }
 
     function filter() {
         var q = inp().value.trim().toLowerCase();
-        render(q); drop().classList.add('open');
-        clr().style.display = (q || hid().value) ? 'block' : 'none';
-        showCaret(!(q || hid().value));
+        render(q);
+        drop().classList.add('open');
         activeIdx = -1;
-        // Do NOT clear hid() here — keep the committed value until a new item is selected or X is clicked
     }
 
-    function select(val) {
-        inp().value = val; hid().value = val;
-        clr().style.display = 'block';
-        showCaret(false);
-        drop().classList.remove('open');
-        wrap().closest('form').submit();
+    function toggle(val) {
+        var q = inp().value.trim().toLowerCase();
+        var wasCount = selectedVals.size > 1;
+        if (selectedVals.has(val)) { selectedVals.delete(val); }
+        else { selectedVals.add(val); }
+        updateDisplay();
+        render(wasCount ? '' : q);
     }
 
     function clear() {
-        inp().value = ''; hid().value = '';
-        clr().style.display = 'none';
-        showCaret(true);
+        selectedVals.clear();
+        updateDisplay();
         drop().classList.remove('open');
         wrap().closest('form').submit();
     }
 
     function blur() {
-        // Delay so a click on a dropdown item fires select() before we reset
-        setTimeout(function() {
-            inp().value = hid().value;
-            if (hid().value) { showCaret(false); clr().style.display = 'block'; }
-            else { showCaret(true); clr().style.display = 'none'; }
-        }, 150);
+        setTimeout(function() { updateDisplay(); }, 150);
     }
 
     function keyNav(e) {
         var d = drop(); var items = Array.from(d.querySelectorAll('.srch-item'));
-        if (e.key === 'Escape') { d.classList.remove('open'); }
+        if (e.key === 'Escape') { d.classList.remove('open'); updateDisplay(); }
         else if (e.key === 'ArrowDown') {
             e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1);
             items.forEach(function(el, i) { el.classList.toggle('srch-active', i === activeIdx); });
@@ -593,21 +639,22 @@ function makeSearchFilter(cfg) {
             if (activeIdx >= 0 && items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (activeIdx >= 0 && items[activeIdx]) items[activeIdx].click();
-            else if (items.length === 1) items[0].click();
+            if (activeIdx >= 0 && items[activeIdx]) toggle(items[activeIdx].dataset.val);
+            else if (items.length === 1) toggle(items[0].dataset.val);
         }
     }
 
     document.addEventListener('click', function(e) {
-        if (!wrap().contains(e.target)) drop().classList.remove('open');
+        if (!wrap().contains(e.target)) { drop().classList.remove('open'); updateDisplay(); }
     });
 
+    updateDisplay();
     return { open: open, filter: filter, keyNav: keyNav, clear: clear, blur: blur };
 }
 
-var locFilter = makeSearchFilter({ wrapId:'locWrap', inputId:'locInput', hiddenId:'locHidden', clearId:'locClear', caretId:'locCaret', dropId:'locDrop', data: {{ locations_by_island | tojson }}, grouped: true });
-var dtFilter  = makeSearchFilter({ wrapId:'dtWrap',  inputId:'dtInput',  hiddenId:'dtHidden',  clearId:'dtClear',  caretId:'dtCaret',  dropId:'dtDrop',  data: {{ device_types | tojson }}, grouped: false });
-var islFilter = makeSearchFilter({ wrapId:'islWrap', inputId:'islInput', hiddenId:'islHidden', clearId:'islClear', caretId:'islCaret', dropId:'islDrop', data: {{ all_islands | tojson }}, grouped: false });
+var locFilter = makeSearchFilter({ wrapId:'locWrap', inputId:'locInput', clearId:'locClear', caretId:'locCaret', dropId:'locDrop', hiddenContainerId:'locHiddenContainer', fieldName:'location',    data: {{ locations_by_island | tojson }}, grouped: true,  initial: {{ selected_locations    | tojson }} });
+var dtFilter  = makeSearchFilter({ wrapId:'dtWrap',  inputId:'dtInput',  clearId:'dtClear',  caretId:'dtCaret',  dropId:'dtDrop',  hiddenContainerId:'dtHiddenContainer',  fieldName:'device_type', data: {{ device_types | tojson }},           grouped: false, initial: {{ selected_device_types | tojson }} });
+var islFilter = makeSearchFilter({ wrapId:'islWrap', inputId:'islInput', clearId:'islClear', caretId:'islCaret', dropId:'islDrop', hiddenContainerId:'islHiddenContainer', fieldName:'island',       data: {{ all_islands | tojson }},             grouped: false, initial: {{ selected_islands      | tojson }} });
 
 // ── Column sort ──────────────────────────────────────────────────────────────
 var originalRowOrder = [];
