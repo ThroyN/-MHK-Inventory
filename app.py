@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, Response, session
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from werkzeug.security import generate_password_hash, check_password_hash
 import json
 import os
@@ -1176,6 +1176,17 @@ def add_device():
                          location_codes=LOCATION_CODES,
                          conditions=DEVICE_CONDITIONS)
 
+def _safe_return_url(url):
+    """Return the path+query of url if it points to our /inventory page, else the plain list URL."""
+    if url:
+        try:
+            p = urlparse(url)
+            if p.path.startswith('/inventory') and '/edit' not in p.path:
+                return p.path + ('?' + p.query if p.query else '')
+        except Exception:
+            pass
+    return url_for('inventory_list')
+
 @app.route('/inventory/edit/<int:device_id>', methods=['GET', 'POST'])
 def edit_device(device_id):
     """Edit an existing device"""
@@ -1185,10 +1196,11 @@ def edit_device(device_id):
         return redirect(url_for('inventory_list'))
 
     if request.method == 'POST':
+        return_to = _safe_return_url(request.form.get('return_to', ''))
         if not all([request.form.get('device_type'), request.form.get('model'),
                     request.form.get('serial_number'), request.form.get('location_code')]):
             flash('Please fill in all required fields.', 'error')
-            return redirect(url_for('edit_device', device_id=device_id))
+            return redirect(url_for('edit_device', device_id=device_id, return_to=return_to))
         track_fields = ['device_type', 'model', 'serial_number', 'assigned_user', 'password', 'location_code', 'phone', 'purchase_date', 'condition', 'notes']
         changes = {f: {'from': device.get(f, ''), 'to': request.form.get(f, device.get(f, ''))} for f in track_fields if str(device.get(f, '')) != str(request.form.get(f, device.get(f, '')))}
         old_island = device.get('island', '')
@@ -1224,14 +1236,17 @@ def edit_device(device_id):
         conn.close()
         log_history('Edited', device, changes)
         flash(f'Device {device["model"]} updated successfully!', 'success')
-        return redirect(url_for('inventory_list'))
+        return redirect(return_to)
 
+    # Capture where the user came from so we can return them there after saving
+    return_to = _safe_return_url(request.args.get('return_to', '') or request.referrer or '')
     inventory = load_inventory()
     all_islands = _get_all_islands(inventory)
     device['location_name'] = LOCATION_CODES.get(device.get('location_code', ''), device.get('location_code', 'Unknown'))
     return render_template('edit_device.html',
                          device=device,
                          device_types=load_device_types(),
+                         return_to=return_to,
                          locations_by_island=_build_locations_by_island(inventory),
                          all_islands=all_islands,
                          location_codes=LOCATION_CODES,
@@ -1250,7 +1265,7 @@ def delete_device(device_id):
     conn.commit()
     conn.close()
     flash('Device deleted successfully!', 'success')
-    return redirect(url_for('inventory_list'))
+    return redirect(request.referrer or url_for('inventory_list'))
 
 @app.route('/inventory/archive/<int:device_id>', methods=['POST'])
 def archive_device(device_id):

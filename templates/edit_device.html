@@ -83,8 +83,9 @@
             </div>
 
             <div style="display: flex; gap: 1rem;">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
                 <button type="submit" class="btn btn-success">💾 Update Device</button>
-                <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary">Cancel</a>
+                <a href="{{ return_to }}" class="btn btn-secondary">Cancel</a>
             </div>
         </form>
     </div>
