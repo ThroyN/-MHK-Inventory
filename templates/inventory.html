@@ -661,7 +661,7 @@ var islFilter = makeSearchFilter({ wrapId:'islWrap', inputId:'islInput', clearId
 
 // ── Column sort ──────────────────────────────────────────────────────────────
 var originalRowOrder = [];
-var SORT_KEY = 'mhk_inv_sort';
+var SORT_KEY = 'mhk_inv_sort_{{ archive_filter }}';
 
 function _saveSortState(state) {
     try { sessionStorage.setItem(SORT_KEY, JSON.stringify(state)); } catch(e) {}

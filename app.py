@@ -1178,11 +1178,11 @@ def add_device():
                          conditions=DEVICE_CONDITIONS)
 
 def _safe_return_url(url):
-    """Return the path+query of url if it points to our /inventory page, else the plain list URL."""
+    """Return the path+query of url only if it is exactly the inventory list page."""
     if url:
         try:
             p = urlparse(url)
-            if p.path.startswith('/inventory') and '/edit' not in p.path:
+            if p.path == '/inventory':
                 return p.path + ('?' + p.query if p.query else '')
         except Exception:
             pass
@@ -1266,7 +1266,7 @@ def delete_device(device_id):
     conn.commit()
     conn.close()
     flash('Device deleted successfully!', 'success')
-    return redirect(request.referrer or url_for('inventory_list'))
+    return redirect(_safe_return_url(request.referrer))
 
 @app.route('/inventory/archive/<int:device_id>', methods=['POST'])
 def archive_device(device_id):
