@@ -1072,13 +1072,14 @@ def inventory_list():
         filtered_inventory = [item for item in filtered_inventory if item.get('island', '').strip() in selected_islands]
 
     if search:
-        filtered_inventory = [
-            item for item in filtered_inventory
-            if search in item.get('model', '').lower() or
-               search in item.get('serial_number', '').lower() or
-               search in item.get('assigned_user', '').lower() or
-               search in item.get('location_code', '').lower()
-        ]
+        def _matches(item):
+            return any(
+                search in str(item.get(f, '') or '').lower()
+                for f in ('model', 'serial_number', 'assigned_user', 'location_code',
+                          'device_type', 'island', 'phone', 'password', 'notes',
+                          'purchase_date')
+            )
+        filtered_inventory = [item for item in filtered_inventory if _matches(item)]
 
     if selected_device_types:
         filtered_inventory = [item for item in filtered_inventory if item.get('device_type') in selected_device_types]
