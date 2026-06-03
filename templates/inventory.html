@@ -263,9 +263,9 @@
     {% if inventory %}
         <div class="table-container">
             <table class="inv-table">
-                {% macro sort_th(label) %}<th class="sortable-th" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc')">↑ A → Z</button><button onclick="doSort(event,this,'desc')">↓ Z → A</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="showDuplicates(event,this)" style="color:#e67e22; border-top:1px solid #eee;">⧉ Show Duplicates</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
-{% macro sort_th_date(label) %}<th class="sortable-th" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc',true)">↑ Earliest → Latest</button><button onclick="doSort(event,this,'desc',true)">↓ Latest → Earliest</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="showDuplicates(event,this)" style="color:#e67e22; border-top:1px solid #eee;">⧉ Show Duplicates</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
-{% macro sort_th_num(label) %}<th class="sortable-th" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc',false,true)">↑ Low → High</button><button onclick="doSort(event,this,'desc',false,true)">↓ High → Low</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="showDuplicates(event,this)" style="color:#e67e22; border-top:1px solid #eee;">⧉ Show Duplicates</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
+                {% macro sort_th(label) %}<th class="sortable-th" data-sort-type="text" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc')">↑ A → Z</button><button onclick="doSort(event,this,'desc')">↓ Z → A</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="showDuplicates(event,this)" style="color:#e67e22; border-top:1px solid #eee;">⧉ Show Duplicates</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
+{% macro sort_th_date(label) %}<th class="sortable-th" data-sort-type="date" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc',true)">↑ Earliest → Latest</button><button onclick="doSort(event,this,'desc',true)">↓ Latest → Earliest</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="showDuplicates(event,this)" style="color:#e67e22; border-top:1px solid #eee;">⧉ Show Duplicates</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
+{% macro sort_th_num(label) %}<th class="sortable-th" data-sort-type="num" onclick="toggleSortDrop(event,this)">{{ label }}<span class="sort-ind"></span><span class="sort-caret">▾</span><div class="sort-drop"><button onclick="doSort(event,this,'asc',false,true)">↑ Low → High</button><button onclick="doSort(event,this,'desc',false,true)">↓ High → Low</button><button onclick="showBlanks(event,this)" style="color:#8e44ad; border-top:1px solid #eee;">∅ Show Blanks / N/A</button><button onclick="showDuplicates(event,this)" style="color:#e67e22; border-top:1px solid #eee;">⧉ Show Duplicates</button><button onclick="clearSort(event)" style="color:#e74c3c; border-top:1px solid #eee;">✕ Clear Sort</button></div></th>{% endmacro %}
                 <thead>
                     <tr>
                         {{ sort_th('Device / Model') }}
@@ -661,9 +661,32 @@ var islFilter = makeSearchFilter({ wrapId:'islWrap', inputId:'islInput', clearId
 
 // ── Column sort ──────────────────────────────────────────────────────────────
 var originalRowOrder = [];
+var SORT_KEY = 'mhk_inv_sort';
+
+function _saveSortState(state) {
+    try { sessionStorage.setItem(SORT_KEY, JSON.stringify(state)); } catch(e) {}
+}
+function _clearSortState() {
+    try { sessionStorage.removeItem(SORT_KEY); } catch(e) {}
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     var tbody = document.querySelector('.inv-table tbody');
-    if (tbody) originalRowOrder = Array.from(tbody.querySelectorAll('tr'));
+    if (!tbody) return;
+    originalRowOrder = Array.from(tbody.querySelectorAll('tr'));
+
+    // Restore any sort that was active before the last page reload
+    var saved;
+    try { saved = JSON.parse(sessionStorage.getItem(SORT_KEY)); } catch(e) {}
+    if (saved) {
+        var headerRow = document.querySelector('.inv-table thead tr');
+        if (headerRow && headerRow.cells[saved.colIdx]) {
+            var th = headerRow.cells[saved.colIdx];
+            if (saved.action === 'sort')   doSort(null, th, saved.dir, saved.isDate, saved.isNumeric);
+            else if (saved.action === 'blanks') showBlanks(null, th);
+            else if (saved.action === 'dupes')  showDuplicates(null, th);
+        }
+    }
 });
 
 function toggleSortDrop(e, th) {
@@ -677,10 +700,10 @@ function toggleSortDrop(e, th) {
 function parseCellDate(text) {
     // Full timestamp: MM-DD-YYYY HH:MM:SS (Added/Edited column)
     var m = text.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
-    if (m) return parseInt(m[3] + m[1] + m[2] + m[4] + m[5] + m[6]); // YYYYMMDDHHMMSS
+    if (m) return parseInt(m[3] + m[1] + m[2] + m[4] + m[5] + m[6]);
     // Plain date: MM-DD-YYYY (Warranty End column)
     var d = text.match(/(\d{2})-(\d{2})-(\d{4})/);
-    if (d) return parseInt(d[3] + d[1] + d[2] + '000000'); // YYYYMMDD000000
+    if (d) return parseInt(d[3] + d[1] + d[2] + '000000');
     return 0;
 }
 
@@ -690,12 +713,12 @@ function isBlank(text) {
 }
 
 function doSort(e, btn, dir, isDate, isNumeric) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     var th = btn.closest('th');
     var colIdx = th.cellIndex;
     var tbody = document.querySelector('.inv-table tbody');
     var rows = Array.from(tbody.querySelectorAll('tr'));
-    rows.forEach(function(r) { r.style.display = ''; }); // clear any duplicate/blank filter
+    rows.forEach(function(r) { r.style.display = ''; });
     rows.sort(function(a, b) {
         var aCell = a.cells[colIdx] ? a.cells[colIdx].textContent.trim() : '';
         var bCell = b.cells[colIdx] ? b.cells[colIdx].textContent.trim() : '';
@@ -727,15 +750,16 @@ function doSort(e, btn, dir, isDate, isNumeric) {
     var ind = th.querySelector('.sort-ind');
     if (ind) ind.textContent = dir === 'asc' ? ' ↑' : ' ↓';
     document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+    _saveSortState({ action:'sort', colIdx:colIdx, dir:dir, isDate:!!isDate, isNumeric:!!isNumeric });
 }
 
 function showBlanks(e, btn) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     var th = btn.closest('th');
     var colIdx = th.cellIndex;
     var tbody = document.querySelector('.inv-table tbody');
     var rows = Array.from(tbody.querySelectorAll('tr'));
-    rows.forEach(function(r) { r.style.display = ''; }); // clear any duplicate filter
+    rows.forEach(function(r) { r.style.display = ''; });
     rows.sort(function(a, b) {
         var aBlank = isBlank(a.cells[colIdx] ? a.cells[colIdx].textContent.trim() : '');
         var bBlank = isBlank(b.cells[colIdx] ? b.cells[colIdx].textContent.trim() : '');
@@ -747,23 +771,22 @@ function showBlanks(e, btn) {
     var ind = th.querySelector('.sort-ind');
     if (ind) ind.textContent = ' ∅';
     document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+    _saveSortState({ action:'blanks', colIdx:colIdx });
 }
 
 function showDuplicates(e, btn) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     var th = btn.closest('th');
     var colIdx = th.cellIndex;
     var tbody = document.querySelector('.inv-table tbody');
     var rows = Array.from(tbody.querySelectorAll('tr'));
 
-    // Count how many times each cell value appears in this column
     var counts = {};
     rows.forEach(function(r) {
         var val = r.cells[colIdx] ? r.cells[colIdx].textContent.trim().toLowerCase() : '';
         if (!isBlank(val)) counts[val] = (counts[val] || 0) + 1;
     });
 
-    // Show only rows whose value appears more than once; hide the rest
     var visible = [], hidden = [];
     rows.forEach(function(r) {
         var val = r.cells[colIdx] ? r.cells[colIdx].textContent.trim().toLowerCase() : '';
@@ -771,7 +794,6 @@ function showDuplicates(e, btn) {
         else { r.style.display = 'none'; hidden.push(r); }
     });
 
-    // Group duplicates together by sorting visible rows by their cell value
     visible.sort(function(a, b) {
         var av = a.cells[colIdx] ? a.cells[colIdx].textContent.trim().toLowerCase() : '';
         var bv = b.cells[colIdx] ? b.cells[colIdx].textContent.trim().toLowerCase() : '';
@@ -783,19 +805,21 @@ function showDuplicates(e, btn) {
     var ind = th.querySelector('.sort-ind');
     if (ind) ind.textContent = ' ⧉';
     document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+    _saveSortState({ action:'dupes', colIdx:colIdx });
 }
 
 function clearSort(e) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     var tbody = document.querySelector('.inv-table tbody');
     if (tbody && originalRowOrder.length) {
         originalRowOrder.forEach(function(r) {
-            r.style.display = '';  // restore rows hidden by showDuplicates / showBlanks
+            r.style.display = '';
             tbody.appendChild(r);
         });
     }
     document.querySelectorAll('.inv-table thead .sort-ind').forEach(function(s) { s.textContent = ''; });
     document.querySelectorAll('.sort-drop.open').forEach(function(d) { d.classList.remove('open'); });
+    _clearSortState();
 }
 
 document.addEventListener('click', function() {
